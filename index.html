@@ -410,6 +410,28 @@
         .mobile-nav-btn.active { color: var(--teal); }
         .mobile-nav-btn span:first-child { font-size: 1.1rem; }
         
+        /* Mobile planning cards */
+        .planning-cards { display: none; }
+        .planning-day-card { background: #F8FAF9; border-radius: var(--radius-md); padding: 0.7rem; margin-bottom: 0.6rem; border-left: 4px solid var(--teal); }
+        .planning-day-card .pdc-header { font-weight: 700; font-size: 0.9rem; color: var(--teal); margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; }
+        .planning-day-card .pdc-header .pdc-cost { font-size: 0.68rem; font-weight: 600; color: var(--gold-dark); background: #FFF6E6; padding: 2px 8px; border-radius: 6px; }
+        .planning-meal-row { display: flex; gap: 0.5rem; align-items: flex-start; padding: 0.45rem 0; border-bottom: 1px solid #E8ECEA; }
+        .planning-meal-row:last-child { border-bottom: none; }
+        .planning-meal-row .pmr-icon { font-size: 1rem; width: 28px; text-align: center; flex-shrink: 0; padding-top: 2px; }
+        .planning-meal-row .pmr-content { flex: 1; min-width: 0; }
+        .planning-meal-row .pmr-type { font-size: 0.68rem; font-weight: 600; color: #888; margin-bottom: 0.15rem; }
+        .planning-meal-row .pmr-recipe { font-size: 0.8rem; font-weight: 600; color: var(--charcoal); }
+        .planning-meal-row .pmr-meta { font-size: 0.62rem; color: #6B7280; margin-top: 0.1rem; }
+        .planning-meal-row .pmr-members { display: flex; flex-wrap: wrap; gap: 0.2rem; margin-top: 0.2rem; }
+        .planning-meal-row .pmr-member { font-size: 0.58rem; background: #E6F2F0; color: var(--teal); padding: 1px 6px; border-radius: 4px; font-weight: 600; }
+        .planning-meal-row .pmr-empty { font-size: 0.75rem; color: #C5C9C7; font-style: italic; }
+        .planning-meal-row .pmr-actions { flex-shrink: 0; }
+
+        @media (max-width: 768px) {
+            .planning-scroll-wrapper { display: none !important; }
+            .planning-cards { display: block; }
+        }
+
         @media (max-width: 768px) {
             .navbar { display: none; }
             .mobile-nav { display: block; }
@@ -1517,7 +1539,48 @@
         // ============================================
         // Calculs coûts
         // ============================================
-        function getRecipeCost(recipe) { return (recipe?.ingredients || []).reduce((s, i) => s + ((i.price || 0) * (i.quantity || 0) / 100), 0); }
+        // Unit conversion: convert quantity+unit to grams equivalent for calculations
+        function toGrams(quantity, unit) {
+            const q = parseFloat(quantity) || 0;
+            const conversions = {
+                'g': 1, 'kg': 1000, 'ml': 1, 'l': 1000, 'L': 1000,
+                'càs': 15, 'càc': 5, 'tbsp': 15, 'tsp': 5,
+                'pièce': 100, 'piece': 100, 'sachet': 11, // 1 sachet levure ≈ 11g
+                'pincée': 1, 'gousse': 5, 'tranche': 30,
+                'verre': 200, 'tasse': 250, 'bol': 300
+            };
+            return q * (conversions[unit] || 1);
+        }
+
+        // Smart display: convert g/ml to practical units for shopping/display
+        function formatQty(quantity, unit, ingredientName) {
+            const q = parseFloat(quantity) || 0;
+            if (q === 0) return '0 ' + unit;
+            const name = (ingredientName || '').toLowerCase();
+            // If already in practical unit, keep it
+            if (['pièce','piece','sachet','càs','càc','gousse','tranche','verre'].includes(unit))
+                return (q % 1 === 0 ? q : q.toFixed(1)) + ' ' + unit;
+            if (unit === 'g' || unit === 'ml') {
+                if (name.includes('ail')) { const n = Math.max(1, Math.round(q / 5)); return n + (n > 1 ? ' gousses' : ' gousse'); }
+                if (name.includes('oeuf') || name.includes('œuf')) { const n = Math.max(1, Math.round(q / 60)); return n + ' pièce' + (n > 1 ? 's' : ''); }
+                if (name.includes('oignon')) { const n = Math.max(1, Math.round(q / 150)); return n + ' pièce' + (n > 1 ? 's' : ''); }
+                if (name.includes('citron') || name.includes('orange') || name.includes('pomme') && !name.includes('terre') || name.includes('banane')) { const n = Math.max(1, Math.round(q / 100)); return n + ' pièce' + (n > 1 ? 's' : ''); }
+                if (name.includes('carotte')) { const n = Math.max(1, Math.round(q / 120)); return n + ' pièce' + (n > 1 ? 's' : ''); }
+                if (name.includes('poireau')) { const n = Math.max(1, Math.round(q / 200)); return n + ' pièce' + (n > 1 ? 's' : ''); }
+                if (name.includes('tomate') && !name.includes('concentr') && !name.includes('pelé')) { const n = Math.max(1, Math.round(q / 150)); return n + ' pièce' + (n > 1 ? 's' : ''); }
+                if (name.includes('courgette') || name.includes('aubergine') || name.includes('concombre') || name.includes('poivron')) { const n = Math.max(1, Math.round(q / 200)); return n + ' pièce' + (n > 1 ? 's' : ''); }
+                if (name.includes('patate') || name.includes('pomme de terre') || name.includes('butternut')) { const n = Math.max(1, Math.round(q / 200)); return n + ' pièce' + (n > 1 ? 's' : ''); }
+                if (name.includes('levure')) { const n = Math.round(q / 11 * 10) / 10; return n + ' sachet' + (n > 1 ? 's' : ''); }
+                if (name.includes('bouillon')) { const n = Math.max(1, Math.round(q / 10)); return n + ' cube' + (n > 1 ? 's' : ''); }
+                if (unit === 'g' && q >= 1000) return (q / 1000).toFixed(1).replace('.0', '') + ' kg';
+                if (unit === 'ml' && q >= 1000) return (q / 1000).toFixed(1).replace('.0', '') + ' L';
+                if (q < 5 && (name.includes('sel') || name.includes('poivre') || name.includes('cannelle') || name.includes('cumin') || name.includes('paprika') || name.includes('curry'))) return Math.max(1, Math.round(q / 5)) + ' càc';
+            }
+            if (q >= 10) return Math.round(q) + ' ' + unit;
+            return (q % 1 === 0 ? q : q.toFixed(1)) + ' ' + unit;
+        }
+
+        function getRecipeCost(recipe) { return (recipe?.ingredients || []).reduce((s, i) => s + ((i.price || 0) * toGrams(i.quantity, i.unit) / 100), 0); }
         function getRecipeCostPerPortion(recipe) { return getRecipeCost(recipe) / (recipe.servings || 1); }
         function getSlotTotalPortions(day, mealType) {
             const parts = getParticipantsForSlot(day, mealType);
@@ -1539,7 +1602,7 @@
             return getMealsForSlot(day, mealType).reduce((t, meal) => {
                 const r = findRecipeById(meal);
                 if (!r) return t;
-                const totalKcal = (r.ingredients||[]).reduce((s,i) => s + ((i.kcal||0)*(i.quantity||0)/100), 0);
+                const totalKcal = (r.ingredients||[]).reduce((s,i) => s + ((i.kcal||0)*toGrams(i.quantity,i.unit)/100), 0);
                 return t + totalKcal / (r.servings || 1);
             }, 0);
         }
@@ -1605,7 +1668,7 @@
                 const totalStockConverted = stocks.reduce((s, x) => s + convertStockToUnit(x.quantity || 0, x.unit, i.unit), 0);
                 const needed = Math.max(0, i.quantity - totalStockConverted);
                 const fullyInStock = totalStockConverted >= i.quantity;
-                return { ...i, totalCost: (i.quantity / 100) * i.price, stockQty: totalStockConverted, needed, fullyInStock, toBuyCost: (needed / 100) * i.price };
+                return { ...i, totalCost: toGrams(i.quantity, i.unit) / 100 * i.price, stockQty: totalStockConverted, needed, fullyInStock, toBuyCost: toGrams(needed, i.unit) / 100 * i.price };
             }).sort((a, b) => a.fullyInStock !== b.fullyInStock ? (a.fullyInStock ? 1 : -1) : a.name.localeCompare(b.name)), details: recipeDetails };
         }
 
@@ -1665,7 +1728,7 @@
             </div>`;
             
             uniqueRecs.forEach(r => {
-                const tk = (r.ingredients||[]).reduce((s,i) => s + ((i.kcal||0)*(i.quantity||0)/100), 0);
+                const tk = (r.ingredients||[]).reduce((s,i) => s + ((i.kcal||0)*toGrams(i.quantity,i.unit)/100), 0);
                 const cp = getRecipeCostPerPortion(r);
                 const pl = getRecipePlannedInfo(r.id);
                 let tp = pl.reduce((s,p) => s + p.nbPersons, 0) || r.servings;
@@ -1676,7 +1739,7 @@
                     ${pl.length ? `<div style="background:#E6F2F0;color:#235550;padding:5px 8px;border-radius:4px;font-size:9px;margin:5px 0;">${pl.map(s => `<strong>${s.day}</strong> ${s.mealType}`).join(' • ')} — ${tp} portions</div>` : ''}
                     <div style="display:flex;gap:15px;margin-top:8px;">
                         <div style="flex:1;"><h4 style="margin:0 0 4px;color:#2D6A63;font-size:10px;">Ingrédients</h4>
-                        <ul style="margin:0;padding-left:14px;font-size:10px;">${(r.ingredients||[]).map(i => `<li style="margin-bottom:2px;">${i.ingredient_name}: <strong>${Math.round((i.quantity||0)*mult)}</strong> ${i.unit}</li>`).join('')||'<li>—</li>'}</ul></div>
+                        <ul style="margin:0;padding-left:14px;font-size:10px;">${(r.ingredients||[]).map(i => `<li style="margin-bottom:2px;">${i.ingredient_name}: <strong>${formatQty((i.quantity||0)*mult, i.unit, i.ingredient_name)}</strong></li>`).join('')||'<li>—</li>'}</ul></div>
                         ${r.instructions ? `<div style="flex:2;"><h4 style="margin:0 0 4px;color:#2D6A63;font-size:10px;">Préparation</h4><div style="font-size:10px;white-space:pre-wrap;line-height:1.5;">${r.instructions}</div></div>` : ''}
                     </div>
                 </div>`;
@@ -1706,8 +1769,8 @@
                 const partial = item.stockQty > 0 && !item.fullyInStock;
                 html += `<tr style="${item.fullyInStock ? 'color:#999;' : ''}">
                     <td style="padding:5px;border-bottom:1px solid #eee;">${item.name}${item.fullyInStock ? ' <span style="background:#D4EDDA;color:#155724;padding:1px 4px;border-radius:2px;font-size:8px;font-weight:600;">STOCK</span>' : ''}${partial ? ' <span style="background:#FFF3CD;color:#856404;padding:1px 4px;border-radius:2px;font-size:8px;">PARTIEL</span>' : ''}</td>
-                    <td style="text-align:center;padding:5px;border-bottom:1px solid #eee;color:#999;font-size:10px;">${Math.round(item.quantity)} ${item.unit}</td>
-                    <td style="text-align:center;padding:5px;border-bottom:1px solid #eee;font-weight:${item.fullyInStock?'400':'600'};">${item.fullyInStock ? '—' : Math.round(item.needed)+' '+item.unit}</td>
+                    <td style="text-align:center;padding:5px;border-bottom:1px solid #eee;color:#999;font-size:10px;">${formatQty(item.quantity, item.unit, item.name)}</td>
+                    <td style="text-align:center;padding:5px;border-bottom:1px solid #eee;font-weight:${item.fullyInStock?'400':'600'};">${item.fullyInStock ? '—' : formatQty(item.needed, item.unit, item.name)}</td>
                     <td style="text-align:right;padding:5px;border-bottom:1px solid #eee;${item.fullyInStock?'text-decoration:line-through;':''}">${(item.fullyInStock ? item.totalCost : item.toBuyCost).toFixed(2)}€</td>
                     <td style="text-align:center;padding:5px;border-bottom:1px solid #eee;">${item.fullyInStock ? '✓' : '☐'}</td>
                 </tr>`;
@@ -1862,8 +1925,8 @@
                         ${item.fullyInStock ? ' <span style="background: #D4EDDA; color: #155724; padding: 1px 6px; border-radius: 3px; font-size: 9px; font-weight: 600;">EN STOCK</span>' : ''}
                         ${hasPartialStock ? ' <span style="background: #FFF3CD; color: #856404; padding: 1px 6px; border-radius: 3px; font-size: 9px; font-weight: 600;">STOCK PARTIEL: ' + Math.round(item.stockQty) + ' ' + item.unit + '</span>' : ''}
                     </td>
-                    <td style="text-align: center; padding: 6px 8px; border-bottom: 1px solid #eee; color: #999; font-size: 11px;">${Math.round(item.quantity)} ${item.unit}</td>
-                    <td style="text-align: center; padding: 6px 8px; border-bottom: 1px solid #eee; font-weight: ${item.fullyInStock ? '400' : '600'};">${item.fullyInStock ? '—' : Math.round(item.needed) + ' ' + item.unit}</td>
+                    <td style="text-align: center; padding: 6px 8px; border-bottom: 1px solid #eee; color: #999; font-size: 11px;">${formatQty(item.quantity, item.unit, item.name)}</td>
+                    <td style="text-align: center; padding: 6px 8px; border-bottom: 1px solid #eee; font-weight: ${item.fullyInStock ? '400' : '600'};">${item.fullyInStock ? '—' : formatQty(item.needed, item.unit, item.name)}</td>
                     <td style="text-align: right; padding: 6px 8px; border-bottom: 1px solid #eee; ${item.fullyInStock ? 'text-decoration: line-through;' : ''}">${item.fullyInStock ? item.totalCost.toFixed(2) : item.toBuyCost.toFixed(2)}€</td>
                     <td style="text-align: center; padding: 6px 8px; border-bottom: 1px solid #eee;">${item.fullyInStock ? '✓' : '☐'}</td>
                 </tr>`;
@@ -1895,7 +1958,7 @@
         function printSingleRecipe(recipeId) {
             const r = findRecipeById(recipeId); if (!r) return;
             const planned = getRecipePlannedInfo(recipeId);
-            const totalKcal = (r.ingredients || []).reduce((s, i) => s + ((i.kcal||0) * (i.quantity||0) / 100), 0);
+            const totalKcal = (r.ingredients || []).reduce((s, i) => s + ((i.kcal||0) * toGrams(i.quantity, i.unit) / 100), 0);
             const cost = getRecipeCostPerPortion(r);
             let adj = r.servings, info = '';
             if (planned.length) {
@@ -1914,7 +1977,7 @@
                 </div>${info}
                 <div style="display:grid;grid-template-columns:1fr 2fr;gap:30px;margin-top:20px;">
                     <div><h3 style="color:#333;border-bottom:2px solid #D5DAD8;padding-bottom:8px;">Ingrédients</h3>
-                        <ul style="list-style:none;padding:0;">${(r.ingredients||[]).map(i => `<li style="padding:8px 0;border-bottom:1px solid #F0F3F2;"><strong>${i.ingredient_name}</strong>: ${Math.round((i.quantity||0)*mult)} ${i.unit}</li>`).join('')||'<li>Aucun</li>'}</ul></div>
+                        <ul style="list-style:none;padding:0;">${(r.ingredients||[]).map(i => `<li style="padding:8px 0;border-bottom:1px solid #F0F3F2;"><strong>${i.ingredient_name}</strong>: ${formatQty((i.quantity||0)*mult, i.unit, i.ingredient_name)}</li>`).join('')||'<li>Aucun</li>'}</ul></div>
                     <div><h3 style="color:#333;border-bottom:2px solid #D5DAD8;padding-bottom:8px;">Préparation</h3>
                         <div style="white-space:pre-wrap;line-height:1.8;font-size:14px;">${r.instructions||'Aucune instruction'}</div></div>
                 </div></div>`;
@@ -1939,7 +2002,7 @@
                     const pn = getParticipantsForSlot(day, meal.type).map(p => state.familyMembers.find(m => m.id === p.member_id)?.name || '').filter(Boolean);
                     const sc = getSlotCost(day, meal.type);
                     let slotKcal = 0;
-                    sm.forEach(m => { const r = findRecipeById(m); if (r) slotKcal += (r.ingredients||[]).reduce((s,i) => s + ((i.kcal||0)*(i.quantity||0)/100), 0) / (r.servings||1); });
+                    sm.forEach(m => { const r = findRecipeById(m); if (r) slotKcal += (r.ingredients||[]).reduce((s,i) => s + ((i.kcal||0)*toGrams(i.quantity,i.unit)/100), 0) / (r.servings||1); });
                     html += `<td style="padding:4px;border:1px solid #ddd;vertical-align:top;font-size:9px;">`;
                     sm.forEach(m => { const r = findRecipeById(m); if (r) html += `<div>• ${r.name}</div>`; });
                     if (pn.length) html += `<div style="color:#666;font-size:8px;margin-top:2px;">${pn.join(', ')}</div>`;
@@ -1960,7 +2023,7 @@
             if (!uniqueRecs.length) { showToast('Aucune recette dans le planning !'); return; }
             let html = `<div style="font-family:Lexend,sans-serif;padding:20px;"><h1 style="text-align:center;color:#2D6A63;border-bottom:2px solid #2D6A63;padding-bottom:10px;margin-bottom:20px;">Recettes de la Semaine (${uniqueRecs.length})</h1>`;
             uniqueRecs.forEach(r => {
-                const tk = (r.ingredients||[]).reduce((s,i) => s + ((i.kcal||0)*(i.quantity||0)/100), 0);
+                const tk = (r.ingredients||[]).reduce((s,i) => s + ((i.kcal||0)*toGrams(i.quantity,i.unit)/100), 0);
                 const cp = getRecipeCostPerPortion(r);
                 const pl = getRecipePlannedInfo(r.id);
                 let tp = pl.reduce((s,p) => s + p.nbPersons, 0) || r.servings;
@@ -1970,7 +2033,7 @@
                     <p style="color:#666;font-size:11px;">${r.preptime+r.cooktime}min | ${tp} pers. | ${r.difficulty} | ~${Math.round(tk/r.servings)}kcal/pers | ${cp.toFixed(2)}€/pers</p>
                     ${pl.length ? `<div style="background:#E6F2F0;color:#235550;padding:8px;border-radius:6px;font-size:10px;margin:8px 0;">${pl.map(s => `<strong>${s.day}</strong> (${s.mealType})`).join(' | ')} — Qtés pour <strong>${tp}</strong> portions</div>` : ''}
                     <h4 style="margin:12px 0 6px;color:#2D6A63;font-size:12px;">Ingrédients:</h4>
-                    <ul style="margin:0;padding-left:18px;font-size:11px;columns:2;">${(r.ingredients||[]).map(i => `<li style="margin-bottom:3px;">${i.ingredient_name}: <strong>${Math.round((i.quantity||0)*mult)}</strong> ${i.unit}</li>`).join('')||'<li>Aucun</li>'}</ul>
+                    <ul style="margin:0;padding-left:18px;font-size:11px;columns:2;">${(r.ingredients||[]).map(i => `<li style="margin-bottom:3px;">${i.ingredient_name}: <strong>${formatQty((i.quantity||0)*mult, i.unit, i.ingredient_name)}</strong></li>`).join('')||'<li>Aucun</li>'}</ul>
                     ${r.instructions ? `<h4 style="margin:12px 0 6px;color:#2D6A63;font-size:12px;">Préparation:</h4><p style="font-size:11px;white-space:pre-wrap;line-height:1.5;">${r.instructions}</p>` : ''}
                 </div>`;
             });
@@ -2438,6 +2501,50 @@
                         `).join('')}
                     </div>
                     </div>
+
+                    <!-- Mobile: vertical day cards -->
+                    <div class="planning-cards">
+                    ${days.map(day => {
+                        const dayLabel = {Lun:'Lundi',Mar:'Mardi',Mer:'Mercredi',Jeu:'Jeudi',Ven:'Vendredi',Sam:'Samedi',Dim:'Dimanche'}[day];
+                        const dayCost = meals.reduce((s, meal) => s + getSlotCost(day, meal.type), 0);
+                        
+                        return `<div class="planning-day-card">
+                            <div class="pdc-header">
+                                <span>${dayLabel}</span>
+                                ${dayCost > 0 ? `<span class="pdc-cost">${dayCost.toFixed(2)}€</span>` : ''}
+                            </div>
+                            ${meals.map(meal => {
+                                const sm = getMealsForSlot(day, meal.type);
+                                const sc = getSlotCost(day, meal.type);
+                                const participants = getParticipantsForSlot(day, meal.type);
+                                const memberInfo = participants.map(p => {
+                                    const member = state.familyMembers.find(x => x.id === p.member_id);
+                                    if (!member) return '';
+                                    const portion = estimatePortions(member);
+                                    const kcalPP = Math.round(getSlotKcalPerPerson(day, meal.type) * portion);
+                                    return `<span class="pmr-member">${member.name?.split(' ')[0]} ${kcalPP}kcal</span>`;
+                                }).join('');
+                                
+                                return `<div class="planning-meal-row">
+                                    <div class="pmr-icon">${meal.icon}</div>
+                                    <div class="pmr-content">
+                                        <div class="pmr-type">${meal.short}</div>
+                                        ${sm.length > 0 ? sm.map(m => {
+                                            const r = findRecipeById(m);
+                                            return r ? `<div class="pmr-recipe">${r.name}</div>` : '';
+                                        }).join('') : '<div class="pmr-empty">—</div>'}
+                                        ${sm.length > 0 && sc > 0 ? `<div class="pmr-meta">💰 ${sc.toFixed(2)}€</div>` : ''}
+                                        ${memberInfo ? `<div class="pmr-members">${memberInfo}</div>` : ''}
+                                    </div>
+                                    <div class="pmr-actions">
+                                        <button class="btn btn-sm btn-secondary" style="padding:4px 8px;font-size:0.7rem;min-height:auto;" onclick="openMealModal('${day}','${meal.type}')">✏️</button>
+                                    </div>
+                                </div>`;
+                            }).join('')}
+                        </div>`;
+                    }).join('')}
+                    </div>
+
                 </div>
                 `}
                 ${renderPdfHistory()}
@@ -2514,7 +2621,7 @@
             // Merge user + site recipes
             const allRecipes = [];
             state.recipes.forEach(rec => {
-                const tk = (rec.ingredients||[]).reduce((s,i) => s + ((i.kcal||0)*(i.quantity||0)/100), 0);
+                const tk = (rec.ingredients||[]).reduce((s,i) => s + ((i.kcal||0)*toGrams(i.quantity,i.unit)/100), 0);
                 allRecipes.push({ ...rec, _source: 'user', _kcalPer: Math.round(tk/(rec.servings||1)), _cost: getRecipeCostPerPortion(rec) });
             });
             state.siteRecipes.filter(sr => !sr.isExcluded).forEach(sr => {
@@ -2523,8 +2630,8 @@
                     const ing = state.ingredients.find(i => i.id == ri.ingredient_id);
                     return { ...ri, ingredient_name: ing?.name || '', kcal: ing?.kcal || 0, proteins: ing?.proteins || 0, carbs: ing?.carbs || 0, fats: ing?.fats || 0, price: ing?.price || 0 };
                 });
-                const tk = ings.reduce((s,i) => s + ((i.kcal||0)*(i.quantity||0)/100), 0);
-                allRecipes.push({ ...sr, ingredients: ings, _source: 'site', _kcalPer: Math.round(tk/(sr.servings||4)), _cost: ings.reduce((s,i)=>s+((i.price||0)*(i.quantity||0)/100),0)/(sr.servings||4) });
+                const tk = ings.reduce((s,i) => s + ((i.kcal||0)*toGrams(i.quantity,i.unit)/100), 0);
+                allRecipes.push({ ...sr, ingredients: ings, _source: 'site', _kcalPer: Math.round(tk/(sr.servings||4)), _cost: ings.reduce((s,i)=>s+((i.price||0)*toGrams(i.quantity,i.unit)/100),0)/(sr.servings||4) });
             });
 
             const filtered = allRecipes.filter(rec => 

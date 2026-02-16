@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://repasio.netlify.app/sitemap.xml

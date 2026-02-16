@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Repasio Admin</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root{--teal:#2D6A63;--teal-dark:#235550;--teal-light:#3A8A82;--gold:#D9A054;--gold-dark:#C08A3A;--gold-light:#F0DCC0;--mist:#F4F7F6;--charcoal:#333;--white:#FFF;--radius-lg:16px;--radius-md:12px;--radius-sm:8px;--shadow:0 4px 6px rgba(0,0,0,.06);--danger:#E53E3E;--success:#38A169;--warning:#D69E2E}
+        *{font-family:'Lexend',sans-serif;box-sizing:border-box;margin:0;padding:0}
+        body{background:var(--mist);color:var(--charcoal);min-height:100vh}
+        @keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+        .fade-in{animation:fadeIn .3s ease-out}
+        .header{background:var(--charcoal);padding:.7rem 1.5rem;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:500;box-shadow:0 2px 10px rgba(0,0,0,.2)}
+        .header-left{display:flex;align-items:center;gap:.8rem}
+        .header-badge{background:linear-gradient(135deg,var(--teal),var(--teal-light));color:#fff;padding:4px 12px;border-radius:20px;font-size:.7rem;font-weight:700;letter-spacing:.5px}
+        .header h1{color:#fff;font-size:1.1rem;font-weight:600}
+        .header-user{color:rgba(255,255,255,.7);font-size:.75rem;display:flex;align-items:center;gap:.5rem}
+        .header-user button{background:rgba(255,255,255,.1);color:#fff;border:none;padding:.35rem .7rem;border-radius:var(--radius-sm);font-size:.7rem;cursor:pointer;font-family:inherit}
+        .header-user button:hover{background:rgba(255,255,255,.2)}
+        .layout{display:flex;min-height:calc(100vh - 52px)}
+        .sidebar{width:220px;background:var(--white);border-right:1px solid #E8ECEA;padding:1rem 0;flex-shrink:0}
+        .sidebar-item{display:flex;align-items:center;gap:.6rem;padding:.7rem 1.2rem;font-size:.8rem;font-weight:500;color:#666;cursor:pointer;transition:all .15s;border-left:3px solid transparent}
+        .sidebar-item:hover{background:#F0F3F2;color:var(--charcoal)}
+        .sidebar-item.active{background:#E6F2F0;color:var(--teal);font-weight:600;border-left-color:var(--teal)}
+        .sidebar-count{background:var(--teal);color:#fff;padding:1px 6px;border-radius:10px;font-size:.6rem;font-weight:700;margin-left:auto}
+        .sidebar-count.warn{background:var(--warning)}
+        .main{flex:1;padding:1.5rem;max-width:1200px;overflow-y:auto}
+        .card{background:var(--white);border-radius:var(--radius-lg);box-shadow:var(--shadow);margin-bottom:1.2rem}
+        .card-header{padding:.9rem 1.15rem;border-bottom:1px solid #E8ECEA;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem}
+        .card-header h2{font-size:1rem;font-weight:700}
+        .card-body{padding:1.15rem}
+        .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:1rem;margin-bottom:1.2rem}
+        .stat-card{background:#fff;border-radius:var(--radius-md);padding:1rem;box-shadow:var(--shadow);text-align:center}
+        .stat-value{font-size:1.8rem;font-weight:700;color:var(--teal)}
+        .stat-label{font-size:.72rem;color:#999;font-weight:500;margin-top:.2rem}
+        .data-table{width:100%;border-collapse:collapse;font-size:.78rem}
+        .data-table th{text-align:left;padding:.6rem .8rem;color:var(--teal);font-weight:600;font-size:.7rem;text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid var(--teal)}
+        .data-table td{padding:.6rem .8rem;border-bottom:1px solid #F0F3F2;vertical-align:middle}
+        .data-table tr:hover td{background:#F8FAF9}
+        .btn{padding:.45rem .8rem;border-radius:var(--radius-sm);font-weight:600;font-size:.72rem;cursor:pointer;transition:all .2s;border:none;display:inline-flex;align-items:center;gap:.3rem;font-family:inherit}
+        .btn-primary{background:var(--teal);color:#fff}.btn-primary:hover{background:var(--teal-dark);transform:translateY(-1px)}
+        .btn-secondary{background:#EAEDEC;color:var(--charcoal);border:1px solid #D5DAD8}.btn-secondary:hover{background:#D5DAD8}
+        .btn-success{background:var(--success);color:#fff}.btn-danger{background:var(--danger);color:#fff}
+        .btn-warning{background:var(--warning);color:#fff}.btn-gold{background:linear-gradient(135deg,var(--gold),var(--gold-dark));color:#fff}
+        .btn-sm{padding:.25rem .5rem;font-size:.65rem}
+        .input,.select,textarea{width:100%;padding:.5rem .7rem;border:1.5px solid #D5DAD8;border-radius:var(--radius-sm);font-size:.8rem;transition:all .2s;background:#fff;font-family:inherit}
+        .input:focus,.select:focus,textarea:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px rgba(45,106,99,.12)}
+        textarea{resize:vertical;min-height:80px}
+        .label{display:block;font-size:.72rem;font-weight:600;color:#5A6B68;margin-bottom:.3rem}
+        .form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.7rem;margin-bottom:.8rem}
+        .form-section{background:#F8FAF9;border-radius:var(--radius-md);padding:1rem;margin-bottom:1rem;border:1px solid #E8ECEA}
+        .tag{display:inline-block;padding:2px 7px;border-radius:4px;font-size:.6rem;font-weight:600}
+        .tag-teal{background:#E6F2F0;color:var(--teal)}.tag-green{background:#D4EDDA;color:#155724}.tag-red{background:#F8D7DA;color:#721C24}.tag-yellow{background:#FFF3CD;color:#856404}
+        .modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;justify-content:center;align-items:center}
+        .modal{background:#fff;border-radius:var(--radius-lg);max-width:720px;width:95%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+        .modal-header{padding:1rem 1.2rem;border-bottom:1px solid #E8ECEA;display:flex;justify-content:space-between;align-items:center}
+        .modal-header h3{font-size:1rem;font-weight:700}
+        .modal-body{padding:1.2rem}
+        .modal-footer{padding:.8rem 1.2rem;border-top:1px solid #E8ECEA;display:flex;gap:.5rem;justify-content:flex-end}
+        .close-btn{background:none;border:none;font-size:1.2rem;cursor:pointer;color:#999}
+        .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--charcoal);color:#fff;padding:.7rem 1.2rem;border-radius:var(--radius-md);font-size:.8rem;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,.3);animation:fadeIn .3s;max-width:90%}
+        .login-page{display:flex;justify-content:center;align-items:center;min-height:100vh;background:linear-gradient(135deg,var(--charcoal) 0%,var(--teal-dark) 100%)}
+        .login-card{background:#fff;border-radius:var(--radius-lg);padding:2.5rem;width:380px;box-shadow:0 20px 60px rgba(0,0,0,.3);text-align:center}
+        .login-card h1{color:var(--teal);font-size:1.5rem;margin-bottom:.3rem}
+        .login-card p{color:#999;font-size:.8rem;margin-bottom:1.5rem}
+        .diet-toggle{padding:3px 8px;border-radius:4px;font-size:.68rem;font-weight:600;border:1px solid #D5DAD8;background:#fff;color:#666;cursor:pointer;transition:all .15s}
+        .diet-toggle.on{border-color:var(--teal);background:#E6F2F0;color:var(--teal)}
+        @media(max-width:768px){.sidebar{display:none}.layout{flex-direction:column}.main{padding:1rem}}
+    </style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const SUPABASE_URL='https://wwovyniqwhmwbnrhabrs.supabase.co';
+const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind3b3Z5bmlxd2htd2JucmhhYnJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg5MzQ0MjQsImV4cCI6MjA4NDUxMDQyNH0.UUmKNmUWfLUNGIcVRyHqYu8Dnkuy_S6Ewjn3hmRjzd4';
+
+
+let db=null;
+const state={user:null,isAdmin:false,activeTab:'dashboard',siteRecipes:[],ingredients:[],submissions:[],adminUsers:[],messages:[],siteContent:{},legalPages:[],stats:{},search:'',editingRecipe:null,editingIngredient:null,showImportModal:false,importData:null};
+
+function showToast(msg,dur=3000){const t=document.createElement('div');t.className='toast';t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),dur)}
+
+function esc(t){return(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+
+// ========== AUTH ==========
+async function checkAdmin(uid){
+    const{data}=await db.from('admin_users').select('id').eq('id',uid).maybeSingle();
+    return !!data;
+}
+async function initApp(){
+    db=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+    const{data:{session}}=await db.auth.getSession();
+    if(session?.user){
+        if(await checkAdmin(session.user.id)){state.user=session.user;state.isAdmin=true;await loadAll()}
+        else{await db.auth.signOut()}
+    }
+    render();
+}
+async function adminLogin(email,pwd){
+    const{data,error}=await db.auth.signInWithPassword({email,password:pwd});
+    if(error){showToast('Erreur: '+error.message);return}
+    if(!await checkAdmin(data.user.id)){await db.auth.signOut();showToast('Acces refuse : compte non admin');return}
+    state.user=data.user;state.isAdmin=true;await loadAll();render();
+}
+async function adminLogout(){await db.auth.signOut();state.user=null;state.isAdmin=false;render()}
+
+// ========== DATA ==========
+async function loadAll(){await Promise.all([loadSiteRecipes(),loadIngredients(),loadSubmissions(),loadStats(),loadAdminUsers(),loadMessages(),loadSiteContentAdmin(),loadLegalPages()])}
+async function loadSiteRecipes(){
+    const{data}=await db.from('site_recipes').select('*, site_recipe_ingredients(id,ingredient_id,quantity,unit)').order('name');
+    state.siteRecipes=data||[];
+}
+async function loadIngredients(){
+    const{data}=await db.from('ingredients').select('*').is('user_id',null).order('name');
+    state.ingredients=data||[];
+}
+async function loadSubmissions(){
+    const{data}=await db.from('recipe_submissions').select('*').order('submitted_at',{ascending:false});
+    state.submissions=data||[];
+}
+async function loadStats(){
+    try{
+        const{data:countResult}=await db.rpc('count_all_users');
+        const[r,i,s,m]=await Promise.all([
+            db.from('site_recipes').select('*',{count:'exact',head:true}).eq('is_active',true),
+            db.from('ingredients').select('*',{count:'exact',head:true}).is('user_id',null),
+            db.from('recipe_submissions').select('*',{count:'exact',head:true}).eq('status','pending'),
+            db.from('contact_messages').select('id,read').eq('read',false)
+        ]);
+        state.stats={users:countResult||0,recipes:r.count||0,ingredients:i.count||0,pendingSubs:s.count||0,unreadMsgs:(m.data||[]).length};
+    }catch(e){state.stats={users:0,recipes:0,ingredients:0,pendingSubs:0,unreadMsgs:0}}
+}
+
+async function loadAdminUsers(){
+    try{
+        const{data}=await db.from('admin_users').select('id, role, created_at');
+        const{data:emails}=await db.rpc('get_user_emails');
+        const emailMap={};(emails||[]).forEach(e=>emailMap[e.id]=e.email);
+        state.adminUsers=(data||[]).map(a=>({...a,email:emailMap[a.id]||''}));
+    }catch(e){state.adminUsers=[]}
+}
+
+async function loadMessages(){
+    try{
+        const{data}=await db.from('contact_messages').select('*').order('created_at',{ascending:false}).limit(50);
+        state.messages=data||[];
+        state.stats.unreadMsgs=(data||[]).filter(m=>!m.read).length;
+    }catch(e){state.messages=[];state.stats.unreadMsgs=0}
+}
+function newRecipeForm(){
+    state.editingRecipe={name:'',category:'Plat principal',difficulty:'Facile',preptime:10,cooktime:20,servings:4,instructions:'',is_active:true,dietary_info:[],tags:[],ingredients:[]};
+    render();
+}
+function editSiteRecipe(id){
+    const rec=state.siteRecipes.find(r=>r.id===id);
+    if(!rec)return;
+    state.editingRecipe={...rec,ingredients:(rec.site_recipe_ingredients||[]).map(ri=>({
+        id:ri.id,ingredient_id:ri.ingredient_id,quantity:ri.quantity,unit:ri.unit,
+        _name:(state.ingredients.find(i=>i.id===ri.ingredient_id)||{}).name||''
+    }))};
+    render();
+}
+async function saveSiteRecipe(){
+    const r=state.editingRecipe;
+    if(!r.name.trim()){showToast('Nom requis');return}
+    const data={name:r.name.trim(),category:r.category,difficulty:r.difficulty,preptime:parseInt(r.preptime)||0,cooktime:parseInt(r.cooktime)||0,servings:parseInt(r.servings)||4,instructions:r.instructions||'',is_active:r.is_active!==false,dietary_info:r.dietary_info||[],tags:r.tags||[],image_url:r.image_url||null};
+    try{
+        let rid;
+        if(r.id){
+            const{error}=await db.from('site_recipes').update(data).eq('id',r.id);if(error)throw error;
+            rid=r.id;await db.from('site_recipe_ingredients').delete().eq('recipe_id',rid);
+        }else{
+            const{data:n,error}=await db.from('site_recipes').insert([data]).select().single();if(error)throw error;rid=n.id;
+        }
+        for(const ing of(r.ingredients||[])){
+            if(ing.ingredient_id){await db.from('site_recipe_ingredients').insert([{recipe_id:rid,ingredient_id:ing.ingredient_id,quantity:parseFloat(ing.quantity)||0,unit:ing.unit||'g'}])}
+        }
+        state.editingRecipe=null;await loadSiteRecipes();await loadStats();showToast('Recette sauvegardee');render();
+    }catch(e){showToast('Erreur: '+(e.message||e))}
+}
+async function deleteSiteRecipe(id){
+    if(!confirm('Supprimer cette recette ?'))return;
+    await db.from('site_recipe_ingredients').delete().eq('recipe_id',id);
+    await db.from('site_recipes').delete().eq('id',id);
+    await loadSiteRecipes();await loadStats();showToast('Supprimee');render();
+}
+async function toggleRecipeActive(id,cur){
+    await db.from('site_recipes').update({is_active:!cur}).eq('id',id);
+    await loadSiteRecipes();await loadStats();render();
+}
+
+// ========== INGREDIENTS CRUD ==========
+function newIngredientForm(){state.editingIngredient={name:'',kcal:0,proteins:0,carbs:0,fats:0,priceKg:''};render()}
+function editIngredientById(id){
+    const ing=state.ingredients.find(i=>i.id===id);
+    if(!ing)return;
+    state.editingIngredient={...ing,priceKg:((ing.price||0)*10).toFixed(2)};render();
+}
+async function saveIngredient(){
+    const i=state.editingIngredient;if(!i.name.trim()){showToast('Nom requis');return}
+    const pk=parseFloat(i.priceKg)||0;
+    const data={name:i.name.trim(),kcal:parseFloat(i.kcal)||0,proteins:parseFloat(i.proteins)||0,carbs:parseFloat(i.carbs)||0,fats:parseFloat(i.fats)||0,price:pk/10,user_id:null};
+    try{
+        if(i.id){const{error}=await db.from('ingredients').update(data).eq('id',i.id);if(error)throw error}
+        else{
+            if(state.ingredients.find(x=>x.name.toLowerCase()===data.name.toLowerCase())){showToast('Existe deja');return}
+            const{error}=await db.from('ingredients').insert([data]);if(error)throw error
+        }
+        state.editingIngredient=null;await loadIngredients();await loadStats();showToast('Enregistre');render();
+    }catch(e){showToast('Erreur: '+(e.message||e))}
+}
+async function deleteIngredientById(id){
+    if(!confirm('Supprimer ?'))return;
+    await db.from('ingredients').delete().eq('id',id);await loadIngredients();await loadStats();render();
+}
+
+// ========== SUBMISSIONS ==========
+async function approveSubmission(id){
+    const sub=state.submissions.find(s=>s.id===id);if(!sub)return;
+    try{
+        const{data:n,error}=await db.from('site_recipes').insert([{name:sub.name,category:sub.category,difficulty:sub.difficulty,preptime:sub.preptime,cooktime:sub.cooktime,servings:sub.servings,instructions:sub.instructions,is_active:true,dietary_info:[],tags:['communaute']}]).select().single();
+        if(error)throw error;
+        for(const ing of(sub.ingredients||[])){
+            if(ing.ingredient_id)await db.from('site_recipe_ingredients').insert([{recipe_id:n.id,ingredient_id:ing.ingredient_id,quantity:ing.quantity||0,unit:ing.unit||'g'}]);
+        }
+        await db.from('recipe_submissions').update({status:'approved',reviewed_at:new Date().toISOString()}).eq('id',id);
+        await loadAll();showToast('Approuvee et ajoutee');render();
+    }catch(e){showToast('Erreur: '+(e.message||e))}
+}
+async function rejectSubmission(id){
+    const notes=prompt('Raison du refus (optionnel):')||'';
+    await db.from('recipe_submissions').update({status:'rejected',admin_notes:notes,reviewed_at:new Date().toISOString()}).eq('id',id);
+    await Promise.all([loadSubmissions(),loadStats()]);showToast('Refusee');render();
+}
+
+// ========== IMPORT ==========
+function handleImportFile(file,type){
+    const reader=new FileReader();
+    reader.onload=e=>{
+        try{
+            const text=e.target.result;
+            if(file.name.endsWith('.json')){
+                state.importData={type,data:JSON.parse(text),format:'json'};
+            }else{
+                const lines=text.split('\n').filter(l=>l.trim());
+                const sep=lines[0].includes(';')?';':',';
+                const headers=lines[0].split(sep).map(h=>h.trim().toLowerCase().replace(/"/g,''));
+                const rows=lines.slice(1).map(line=>{const vals=line.split(sep);const obj={};headers.forEach((h,idx)=>obj[h]=(vals[idx]||'').trim().replace(/"/g,''));return obj});
+                state.importData={type,data:rows,format:'csv',headers};
+            }
+            state.showImportModal=true;render();
+        }catch(err){showToast('Erreur fichier: '+err.message)}
+    };
+    reader.readAsText(file);
+}
+async function executeImport(){
+    const{type,data}=state.importData;let count=0;
+    try{
+        if(type==='ingredients'){
+            for(const row of data){
+                const name=row.name||row.nom||'';if(!name)continue;
+                if(state.ingredients.find(x=>x.name.toLowerCase()===name.toLowerCase()))continue;
+                const pk=parseFloat(row.price_kg||row.prix_kg||row.price||row.prix||0);
+                await db.from('ingredients').insert([{name,kcal:parseFloat(row.kcal||row.calories||0),proteins:parseFloat(row.proteins||row.proteines||0),carbs:parseFloat(row.carbs||row.glucides||0),fats:parseFloat(row.fats||row.lipides||0),price:pk/10,user_id:null}]);
+                count++;
+            }
+            await loadIngredients();
+        }else{
+            for(const row of data){
+                const name=row.name||row.nom||'';if(!name)continue;
+                const{data:n,error}=await db.from('site_recipes').insert([{name,category:row.category||row.categorie||'Plat principal',difficulty:row.difficulty||row.difficulte||'Facile',preptime:parseInt(row.preptime||row.preparation||10),cooktime:parseInt(row.cooktime||row.cuisson||20),servings:parseInt(row.servings||row.portions||4),instructions:row.instructions||'',is_active:true,dietary_info:row.dietary_info?JSON.parse(row.dietary_info):[],tags:row.tags?JSON.parse(row.tags):[]}]).select().single();
+                if(error)continue;
+                if(row.ingredients&&Array.isArray(row.ingredients)){
+                    for(const ing of row.ingredients){const f=state.ingredients.find(x=>x.name.toLowerCase()===(ing.name||'').toLowerCase());if(f)await db.from('site_recipe_ingredients').insert([{recipe_id:n.id,ingredient_id:f.id,quantity:ing.quantity||0,unit:ing.unit||'g'}])}
+                }
+                count++;
+            }
+            await loadSiteRecipes();
+        }
+        state.showImportModal=false;state.importData=null;await loadStats();
+        showToast(count+' '+(type==='ingredients'?'aliments':'recettes')+' importes');render();
+    }catch(e){showToast('Erreur import: '+(e.message||e))}
+}
+
+// ========== DIET TOGGLE HELPER ==========
+function toggleDiet(tag){
+    const arr=state.editingRecipe.dietary_info||[];
+    const idx=arr.indexOf(tag);
+    if(idx>=0)arr.splice(idx,1);else arr.push(tag);
+    state.editingRecipe.dietary_info=arr;render();
+}
+
+// ========== RENDER ==========
+function render(){
+    const app=document.getElementById('app');
+    if(!state.user){app.innerHTML=renderLogin();return}
+    app.innerHTML=renderHeader()+`<div class="layout">${renderSidebar()}<div class="main fade-in">${renderContent()}</div></div>`+(state.editingRecipe?renderRecipeModal():'')+(state.editingIngredient?renderIngredientModal():'')+(state.showImportModal?renderImportModal():'');
+}
+
+function renderLogin(){
+    return `<div class="login-page"><div class="login-card fade-in">
+        <div style="margin-bottom:1rem"><span class="header-badge" style="font-size:.8rem;padding:6px 16px">REPASIO</span></div>
+        <h1>Administration</h1><p>Connectez-vous avec votre compte admin</p>
+        <div style="text-align:left">
+            <label class="label">Email</label><input class="input" id="le" type="email" placeholder="admin@repasio.fr" style="margin-bottom:.7rem">
+            <label class="label">Mot de passe</label><input class="input" id="lp" type="password" placeholder="••••••••" style="margin-bottom:1.2rem" onkeyup="if(event.key==='Enter')document.getElementById('lb').click()">
+            <button class="btn btn-primary" id="lb" style="width:100%;justify-content:center;padding:.65rem" onclick="adminLogin(document.getElementById('le').value,document.getElementById('lp').value)">Connexion</button>
+        </div>
+    </div></div>`;
+}
+
+function renderHeader(){
+    return `<div class="header"><div class="header-left"><span class="header-badge">REPASIO</span><h1>Backoffice</h1></div>
+    <div class="header-user"><span>${state.user.email}</span><button onclick="adminLogout()">Deconnexion</button></div></div>`;
+}
+
+function renderSidebar(){
+    const tabs=[
+        {id:'dashboard',icon:'📊',label:'Dashboard'},
+        {id:'recipes',icon:'📖',label:'Recettes',count:state.siteRecipes.length},
+        {id:'ingredients',icon:'🥕',label:'Aliments',count:state.ingredients.length},
+        {id:'submissions',icon:'💡',label:'Soumissions',count:state.stats.pendingSubs||0,warn:true},
+        {id:'messages',icon:'💬',label:'Messages',count:state.stats.unreadMsgs||0,warn:true},
+        {id:'content',icon:'📝',label:'Contenu site'},
+        {id:'admins',icon:'🔐',label:'Admins'}
+    ];
+    return `<div class="sidebar">${tabs.map(t=>`<div class="sidebar-item ${state.activeTab===t.id?'active':''}" onclick="state.activeTab='${t.id}';state.search='';render()"><span>${t.icon}</span> ${t.label}${t.count!==undefined?`<span class="sidebar-count${t.warn&&t.count>0?' warn':''}">${t.count}</span>`:''}</div>`).join('')}</div>`;
+}
+
+function renderContent(){
+    switch(state.activeTab){
+        case'recipes':return renderRecipes();
+        case'ingredients':return renderIngredients();
+        case'submissions':return renderSubmissions();
+        case'messages':return renderMessages();
+        case'content':return renderContentEditor();
+        case'admins':return renderAdmins();
+        default:return renderDashboard();
+    }
+}
+
+// ========== DASHBOARD ==========
+function renderDashboard(){
+    const s=state.stats;
+    const unread=s.unreadMsgs||0;
+    const recentMsgs=(state.messages||[]).slice(0,3);
+    return `<div class="stats-grid">
+        <div class="stat-card"><div class="stat-value">${s.recipes||0}</div><div class="stat-label">Recettes actives</div></div>
+        <div class="stat-card"><div class="stat-value">${s.ingredients||0}</div><div class="stat-label">Aliments base</div></div>
+        <div class="stat-card"><div class="stat-value">${s.users||0}</div><div class="stat-label">Utilisateurs</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:${s.pendingSubs>0?'var(--warning)':'var(--teal)'}">${s.pendingSubs||0}</div><div class="stat-label">Soumissions en attente</div></div>
+        <div class="stat-card"><div class="stat-value" style="color:${unread>0?'var(--danger)':'var(--teal)'}">${unread}</div><div class="stat-label">Messages non lus</div></div>
+    </div>
+    <div class="card"><div class="card-header"><h2>Actions rapides</h2></div>
+    <div class="card-body" style="display:flex;gap:.8rem;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="state.activeTab='recipes';newRecipeForm()">+ Nouvelle recette</button>
+        <button class="btn btn-primary" onclick="state.activeTab='ingredients';newIngredientForm()">+ Nouvel aliment</button>
+        <button class="btn btn-gold" onclick="state.activeTab='submissions';render()">Voir soumissions (${s.pendingSubs||0})</button>
+        ${unread>0?`<button class="btn btn-danger" onclick="state.activeTab='messages';render()">💬 ${unread} message${unread>1?'s':''} non lu${unread>1?'s':''}</button>`:''}
+    </div></div>
+    ${recentMsgs.length>0?`<div class="card"><div class="card-header"><h2>💬 Derniers messages</h2><button class="btn btn-secondary btn-sm" onclick="state.activeTab='messages';render()">Tout voir</button></div>
+    <div class="card-body">${recentMsgs.map(m=>{
+        const date=new Date(m.created_at).toLocaleDateString('fr-FR',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+        const isUnread=!m.read;
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:.5rem 0;border-bottom:1px solid #F0F3F2;cursor:pointer" onclick="state.activeTab='messages';render()">
+            <div><span style="font-weight:${isUnread?'700':'500'};font-size:.82rem">${esc(m.name)||'Anonyme'}</span>
+            ${isUnread?'<span class="tag tag-yellow" style="margin-left:.3rem">Nouveau</span>':''}
+            <div style="font-size:.7rem;color:#999">${esc(m.subject)||'Sans sujet'} — ${date}</div></div>
+        </div>`}).join('')}</div></div>`:''}`;
+}
+
+// ========== RECIPES ==========
+function renderRecipes(){
+    const q=(state.search||'').toLowerCase();
+    const f=state.siteRecipes.filter(r=>r.name.toLowerCase().includes(q)||(r.category||'').toLowerCase().includes(q));
+    return `<div class="card"><div class="card-header"><h2>📖 Recettes du site (${state.siteRecipes.length})</h2>
+    <div style="display:flex;gap:.5rem">
+        <button class="btn btn-primary" onclick="newRecipeForm()">+ Nouvelle</button>
+        <label class="btn btn-secondary" style="cursor:pointer">📥 Import<input type="file" accept=".json,.csv" style="display:none" onchange="handleImportFile(this.files[0],'recipes')"></label>
+    </div></div>
+    <div class="card-body">
+        <input class="input" placeholder="🔍 Rechercher..." value="${state.search||''}" oninput="state.search=this.value;render()" style="max-width:300px;margin-bottom:1rem">
+        <table class="data-table"><thead><tr><th>Nom</th><th>Catégorie</th><th>Temps</th><th>Portions</th><th>Ing.</th><th>Diète</th><th>Statut</th><th>Actions</th></tr></thead>
+        <tbody>${f.map(r=>{
+            const ni=(r.site_recipe_ingredients||[]).length;
+            const di=(r.dietary_info||[]).map(d=>`<span class="tag tag-teal">${d}</span>`).join(' ');
+            return `<tr>
+                <td style="font-weight:600">${esc(r.name)}</td>
+                <td>${r.category||''}</td>
+                <td>${(r.preptime||0)+(r.cooktime||0)} min</td>
+                <td>${r.servings||4}</td>
+                <td>${ni>0?`<span class="tag tag-green">${ni}</span>`:`<span class="tag tag-red">0</span>`}</td>
+                <td>${di||'-'}</td>
+                <td><span class="tag ${r.is_active?'tag-green':'tag-red'}">${r.is_active?'Actif':'Inactif'}</span></td>
+                <td style="white-space:nowrap">
+                    <button class="btn btn-secondary btn-sm" onclick="editSiteRecipe(${r.id})">✏️</button>
+                    <button class="btn btn-sm" style="background:${r.is_active?'#FFF3CD':'#D4EDDA'};color:${r.is_active?'#856404':'#155724'}" onclick="toggleRecipeActive(${r.id},${r.is_active})">${r.is_active?'⏸️':'▶️'}</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteSiteRecipe(${r.id})">🗑️</button>
+                </td></tr>`}).join('')}</tbody></table>
+    </div></div>`;
+}
+
+// ========== INGREDIENTS ==========
+function renderIngredients(){
+    const q=(state.search||'').toLowerCase();
+    const f=state.ingredients.filter(i=>i.name.toLowerCase().includes(q));
+    return `<div class="card"><div class="card-header"><h2>🥕 Aliments base (${state.ingredients.length})</h2>
+    <div style="display:flex;gap:.5rem">
+        <button class="btn btn-primary" onclick="newIngredientForm()">+ Nouveau</button>
+        <label class="btn btn-secondary" style="cursor:pointer">📥 Import<input type="file" accept=".json,.csv" style="display:none" onchange="handleImportFile(this.files[0],'ingredients')"></label>
+    </div></div>
+    <div class="card-body">
+        <input class="input" placeholder="🔍 Rechercher..." value="${state.search||''}" oninput="state.search=this.value;render()" style="max-width:300px;margin-bottom:1rem">
+        <table class="data-table"><thead><tr><th>Nom</th><th>Kcal/100g</th><th>P</th><th>G</th><th>L</th><th>Prix/kg</th><th>Actions</th></tr></thead>
+        <tbody>${f.map(i=>`<tr>
+            <td style="font-weight:600">${esc(i.name)}</td>
+            <td>${i.kcal||0}</td><td>${i.proteins||0}g</td><td>${i.carbs||0}g</td><td>${i.fats||0}g</td>
+            <td style="color:var(--teal);font-weight:600">${((i.price||0)*10).toFixed(2)}€</td>
+            <td style="white-space:nowrap">
+                <button class="btn btn-secondary btn-sm" onclick="editIngredientById(${i.id})">✏️</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteIngredientById(${i.id})">🗑️</button>
+            </td></tr>`).join('')}</tbody></table>
+    </div></div>`;
+}
+
+// ========== SUBMISSIONS ==========
+function renderSubmissions(){
+    const pending=state.submissions.filter(s=>s.status==='pending');
+    const reviewed=state.submissions.filter(s=>s.status!=='pending');
+    return `<div class="card"><div class="card-header"><h2>💡 Soumissions utilisateurs</h2></div>
+    <div class="card-body">
+        ${pending.length===0?'<p style="color:#999;font-size:.85rem;text-align:center;padding:1rem">Aucune soumission en attente</p>':''}
+        ${pending.map(s=>{
+            const ings=(s.ingredients||[]).map(i=>{const f=state.ingredients.find(x=>x.id===i.ingredient_id);return f?f.name+' ('+i.quantity+(i.unit||'g')+')':'?'}).join(', ');
+            const date=new Date(s.submitted_at).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'});
+            return `<div class="form-section">
+                <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:.6rem">
+                    <div><h4 style="font-size:.9rem;font-weight:700">${esc(s.name)}</h4>
+                    <div style="font-size:.7rem;color:#999">${s.category} • ${s.difficulty} • ${(s.preptime||0)+(s.cooktime||0)} min • ${s.servings} pers. • ${date}</div></div>
+                    <div style="display:flex;gap:.4rem">
+                        <button class="btn btn-success btn-sm" onclick="approveSubmission(${s.id})">✅ Approuver</button>
+                        <button class="btn btn-danger btn-sm" onclick="rejectSubmission(${s.id})">❌ Refuser</button>
+                    </div>
+                </div>
+                ${ings?`<div style="font-size:.75rem;color:#666"><strong>Ingrédients:</strong> ${ings}</div>`:''}
+                ${s.instructions?`<div style="font-size:.75rem;color:#666;margin-top:.3rem;white-space:pre-wrap;max-height:80px;overflow:hidden"><strong>Instructions:</strong> ${esc(s.instructions)}</div>`:''}
+            </div>`}).join('')}
+        ${reviewed.length>0?`<div style="margin-top:1rem;padding-top:.8rem;border-top:1px solid #E8ECEA">
+            <h4 style="font-size:.82rem;color:#999;margin-bottom:.5rem">Historique</h4>
+            ${reviewed.slice(0,20).map(s=>`<div style="display:flex;justify-content:space-between;padding:.35rem 0;font-size:.75rem;border-bottom:1px solid #F0F3F2">
+                <span>${esc(s.name)}</span>
+                <span class="tag ${s.status==='approved'?'tag-green':'tag-red'}">${s.status==='approved'?'Approuvee':'Refusee'}</span>
+            </div>`).join('')}
+        </div>`:''}
+    </div></div>`;
+}
+
+// ========== MODALS ==========
+function renderRecipeModal(){
+    const r=state.editingRecipe;
+    const diets=['Sans porc','Sans gluten','Végétarien','Végan','Sans lactose','Halal','Casher','Sans fruits de mer'];
+    const cats=['Entrée','Plat principal','Dessert','Accompagnement','Petit-déjeuner','Goûter'];
+    const diffs=['Facile','Moyen','Difficile'];
+    return `<div class="modal-overlay" onclick="if(event.target===this){state.editingRecipe=null;render()}">
+    <div class="modal">
+        <div class="modal-header"><h3>${r.id?'✏️ Modifier':'➕ Nouvelle'} recette</h3><button class="close-btn" onclick="state.editingRecipe=null;render()">✕</button></div>
+        <div class="modal-body">
+            <div class="form-grid">
+                <div style="grid-column:span 2"><label class="label">Nom</label><input class="input" value="${r.name}" oninput="state.editingRecipe.name=this.value"></div>
+                <div><label class="label">Catégorie</label><select class="select" onchange="state.editingRecipe.category=this.value">${cats.map(c=>`<option ${r.category===c?'selected':''}>${c}</option>`).join('')}</select></div>
+                <div><label class="label">Difficulté</label><select class="select" onchange="state.editingRecipe.difficulty=this.value">${diffs.map(d=>`<option ${r.difficulty===d?'selected':''}>${d}</option>`).join('')}</select></div>
+                <div><label class="label">Prépa (min)</label><input type="number" class="input" value="${r.preptime}" oninput="state.editingRecipe.preptime=this.value"></div>
+                <div><label class="label">Cuisson (min)</label><input type="number" class="input" value="${r.cooktime}" oninput="state.editingRecipe.cooktime=this.value"></div>
+                <div><label class="label">Portions</label><input type="number" class="input" value="${r.servings}" oninput="state.editingRecipe.servings=this.value"></div>
+            </div>
+
+            <div style="margin-bottom:.8rem">
+                <label class="label">Options diététiques</label>
+                <div style="display:flex;flex-wrap:wrap;gap:.3rem">${diets.map(d=>{
+                    const on=(r.dietary_info||[]).includes(d);
+                    return `<button type="button" class="diet-toggle ${on?'on':''}" onclick="toggleDiet('${d}')">${on?'✓ ':''}${d}</button>`;
+                }).join('')}</div>
+            </div>
+
+            <div style="margin-bottom:.8rem">
+                <label class="label">Ingrédients</label>
+                ${(r.ingredients||[]).map((ing,idx)=>`<div style="display:flex;gap:.35rem;margin-bottom:.35rem;align-items:center">
+                    <select class="select" style="flex:2" onchange="state.editingRecipe.ingredients[${idx}].ingredient_id=parseInt(this.value);render()">
+                        <option value="">Choisir...</option>
+                        ${state.ingredients.map(i=>`<option value="${i.id}" ${ing.ingredient_id===i.id?'selected':''}>${esc(i.name)}</option>`).join('')}
+                    </select>
+                    <input type="number" class="input" style="width:70px" placeholder="Qté" value="${ing.quantity||''}" onchange="state.editingRecipe.ingredients[${idx}].quantity=this.value">
+                    <select class="select" style="width:65px" onchange="state.editingRecipe.ingredients[${idx}].unit=this.value">${['g','ml','piece','cas','cac'].map(u=>`<option ${ing.unit===u?'selected':''}>${u}</option>`).join('')}</select>
+                    <button class="btn btn-danger btn-sm" onclick="state.editingRecipe.ingredients.splice(${idx},1);render()">✕</button>
+                </div>`).join('')}
+                <button class="btn btn-secondary btn-sm" onclick="state.editingRecipe.ingredients.push({ingredient_id:null,quantity:0,unit:'g'});render()">+ Ingrédient</button>
+            </div>
+
+            <label class="label">Instructions</label>
+            <textarea class="input" oninput="state.editingRecipe.instructions=this.value">${r.instructions||''}</textarea>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="state.editingRecipe=null;render()">Annuler</button>
+            <button class="btn btn-primary" onclick="saveSiteRecipe()">${r.id?'Enregistrer':'Creer'}</button>
+        </div>
+    </div></div>`;
+}
+
+function renderIngredientModal(){
+    const i=state.editingIngredient;
+    return `<div class="modal-overlay" onclick="if(event.target===this){state.editingIngredient=null;render()}">
+    <div class="modal" style="max-width:500px">
+        <div class="modal-header"><h3>${i.id?'✏️ Modifier':'➕ Nouvel'} aliment</h3><button class="close-btn" onclick="state.editingIngredient=null;render()">✕</button></div>
+        <div class="modal-body">
+            <div class="form-grid">
+                <div style="grid-column:span 2"><label class="label">Nom</label><input class="input" value="${i.name}" oninput="state.editingIngredient.name=this.value"></div>
+                <div><label class="label">Kcal /100g</label><input type="number" class="input" value="${i.kcal}" oninput="state.editingIngredient.kcal=this.value"></div>
+                <div><label class="label">Protéines /100g</label><input type="number" step="0.1" class="input" value="${i.proteins}" oninput="state.editingIngredient.proteins=this.value"></div>
+                <div><label class="label">Glucides /100g</label><input type="number" step="0.1" class="input" value="${i.carbs}" oninput="state.editingIngredient.carbs=this.value"></div>
+                <div><label class="label">Lipides /100g</label><input type="number" step="0.1" class="input" value="${i.fats}" oninput="state.editingIngredient.fats=this.value"></div>
+                <div><label class="label">Prix €/kg</label><input type="number" step="0.01" class="input" value="${i.priceKg||''}" oninput="state.editingIngredient.priceKg=this.value"></div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="state.editingIngredient=null;render()">Annuler</button>
+            <button class="btn btn-primary" onclick="saveIngredient()">${i.id?'Enregistrer':'Creer'}</button>
+        </div>
+    </div></div>`;
+}
+
+function renderImportModal(){
+    const d=state.importData;if(!d)return'';
+    const label=d.type==='ingredients'?'aliments':'recettes';
+    const preview=d.data.slice(0,5);
+    return `<div class="modal-overlay" onclick="if(event.target===this){state.showImportModal=false;state.importData=null;render()}">
+    <div class="modal">
+        <div class="modal-header"><h3>📥 Import ${label} (${d.data.length} lignes)</h3><button class="close-btn" onclick="state.showImportModal=false;state.importData=null;render()">✕</button></div>
+        <div class="modal-body">
+            <p style="font-size:.8rem;color:#666;margin-bottom:.8rem">Format: ${d.format.toUpperCase()} — ${d.data.length} enregistrements detectes</p>
+            ${d.format==='csv'?`<p style="font-size:.72rem;color:#999;margin-bottom:.5rem">Colonnes: ${(d.headers||[]).join(', ')}</p>`:''}
+            <div style="background:#F8FAF9;border-radius:var(--radius-sm);padding:.8rem;font-size:.72rem;max-height:200px;overflow:auto;margin-bottom:1rem">
+                <strong>Apercu (${Math.min(5,d.data.length)} premiers):</strong>
+                ${preview.map((row,i)=>`<div style="padding:.3rem 0;border-bottom:1px solid #E8ECEA">${i+1}. <strong>${row.name||row.nom||'?'}</strong> ${row.kcal?'— '+row.kcal+' kcal':''} ${row.category||row.categorie||''}</div>`).join('')}
+            </div>
+            <p style="font-size:.72rem;color:var(--teal)">Les doublons (meme nom) seront ignores.</p>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="state.showImportModal=false;state.importData=null;render()">Annuler</button>
+            <button class="btn btn-primary" onclick="executeImport()">Importer ${d.data.length} ${label}</button>
+        </div>
+    </div></div>`;
+}
+
+// ========== ADMINS ==========
+// ========== SITE CONTENT + LEGAL ==========
+async function loadSiteContentAdmin(){
+    try{
+        const{data}=await db.from('site_content').select('*').order('key');
+        state.siteContent={};(data||[]).forEach(c=>state.siteContent[c.key]=c);
+    }catch(e){state.siteContent={}}
+}
+async function loadLegalPages(){
+    try{
+        const{data}=await db.from('legal_pages').select('*').order('slug');
+        state.legalPages=data||[];
+    }catch(e){state.legalPages=[]}
+}
+async function saveSiteContent(key,value){
+    try{
+        const{error}=await db.from('site_content').upsert({key,value,updated_at:new Date().toISOString()},{onConflict:'key'});
+        if(error)throw error;
+        await loadSiteContentAdmin();showToast('Contenu sauvegarde');render();
+    }catch(e){showToast('Erreur: '+(e.message||e))}
+}
+async function saveLegalPage(slug,title,content){
+    try{
+        const existing=state.legalPages.find(p=>p.slug===slug);
+        if(existing){
+            const{error}=await db.from('legal_pages').update({title,content,updated_at:new Date().toISOString()}).eq('slug',slug);
+            if(error)throw error;
+        }else{
+            const{error}=await db.from('legal_pages').insert([{slug,title,content}]);
+            if(error)throw error;
+        }
+        await loadLegalPages();showToast('Page sauvegardee');render();
+    }catch(e){showToast('Erreur: '+(e.message||e))}
+}
+
+function renderContentEditor(){
+    const sc=state.siteContent;
+    const heroStats=sc.hero_stats?JSON.stringify(sc.hero_stats.value,null,2):'["🌿 -30% de gaspillage", "💰 100% gratuit 14 jours"]';
+    const promoRaw=sc.promo_banner?.value||{active:false,text:'',color:'#D9A054'};
+
+    const slugs=['mentions-legales','cgv','confidentialite'];
+    const slugLabels={'mentions-legales':'Mentions Légales','cgv':'CGV','confidentialite':'Politique de Confidentialité'};
+
+    return `
+    <div class="card"><div class="card-header"><h2>📝 Contenu marketing</h2></div>
+    <div class="card-body">
+        <div class="form-section">
+            <h4 style="font-size:.85rem;font-weight:600;margin-bottom:.5rem">Statistiques Hero (landing page)</h4>
+            <p style="font-size:.68rem;color:#999;margin-bottom:.5rem">Format JSON : tableau de textes. Le chiffre en début sera mis en gras.</p>
+            <textarea class="input" id="ed-hero-stats" style="min-height:80px;font-family:monospace;font-size:.75rem">${esc(heroStats)}</textarea>
+            <button class="btn btn-primary btn-sm" style="margin-top:.5rem" onclick="try{saveSiteContent('hero_stats',JSON.parse(document.getElementById('ed-hero-stats').value))}catch(e){showToast('JSON invalide')}">Sauvegarder</button>
+        </div>
+
+        <div class="form-section">
+            <h4 style="font-size:.85rem;font-weight:600;margin-bottom:.5rem">Bannière promo</h4>
+            <div class="form-grid">
+                <div><label class="label">Texte</label><input class="input" id="ed-promo-text" value="${esc(promoRaw.text||'')}"></div>
+                <div><label class="label">Couleur</label><input type="color" class="input" id="ed-promo-color" value="${promoRaw.color||'#D9A054'}" style="height:38px;padding:2px"></div>
+                <div><label class="label">Active</label><select class="select" id="ed-promo-active"><option value="true" ${promoRaw.active?'selected':''}>Oui</option><option value="false" ${!promoRaw.active?'selected':''}>Non</option></select></div>
+            </div>
+            <button class="btn btn-primary btn-sm" style="margin-top:.5rem" onclick="saveSiteContent('promo_banner',{active:document.getElementById('ed-promo-active').value==='true',text:document.getElementById('ed-promo-text').value,color:document.getElementById('ed-promo-color').value})">Sauvegarder</button>
+        </div>
+    </div></div>
+
+    <div class="card"><div class="card-header"><h2>📄 Pages légales</h2></div>
+    <div class="card-body">
+        ${slugs.map(slug=>{
+            const page=state.legalPages.find(p=>p.slug===slug);
+            const title=page?.title||slugLabels[slug];
+            const content=page?.content||'';
+            return `<div class="form-section">
+                <h4 style="font-size:.85rem;font-weight:600;margin-bottom:.5rem">${esc(title)}</h4>
+                <label class="label">Titre</label>
+                <input class="input" id="ed-legal-title-${slug}" value="${esc(title)}" style="margin-bottom:.5rem">
+                <label class="label">Contenu (HTML autorise)</label>
+                <textarea class="input" id="ed-legal-content-${slug}" style="min-height:120px;font-size:.75rem">${esc(content)}</textarea>
+                <button class="btn btn-primary btn-sm" style="margin-top:.5rem" onclick="saveLegalPage('${slug}',document.getElementById('ed-legal-title-${slug}').value,document.getElementById('ed-legal-content-${slug}').value)">Sauvegarder</button>
+            </div>`}).join('')}
+    </div></div>`;
+}
+
+// ========== MESSAGES ==========
+function renderMessages(){
+    const msgs=state.messages||[];
+    const unread=msgs.filter(m=>!m.read);
+    const read=msgs.filter(m=>m.read);
+    return `<div class="card"><div class="card-header"><h2>💬 Messages de contact (${msgs.length})</h2>
+    ${unread.length>0?`<span class="tag tag-yellow">${unread.length} non lu${unread.length>1?'s':''}</span>`:''}
+    </div>
+    <div class="card-body">
+        ${msgs.length===0?'<p style="color:#999;font-size:.85rem;text-align:center;padding:1.5rem">Aucun message</p>':''}
+        ${msgs.map(m=>{
+            const date=new Date(m.created_at).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+            const isUnread=!m.read;
+            return `<div class="form-section" style="${isUnread?'border-left:3px solid var(--warning);':'border-left:3px solid #E8ECEA;'}margin-bottom:.6rem">
+                <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:.4rem">
+                    <div>
+                        <span style="font-weight:700;font-size:.85rem">${esc(m.name)||'Anonyme'}</span>
+                        <span style="font-size:.7rem;color:#999;margin-left:.5rem">${esc(m.email)}</span>
+                        ${isUnread?'<span class="tag tag-yellow" style="margin-left:.4rem">Nouveau</span>':''}
+                    </div>
+                    <div style="display:flex;gap:.3rem;align-items:center">
+                        <span style="font-size:.65rem;color:#999">${date}</span>
+                        ${isUnread?`<button class="btn btn-secondary btn-sm" onclick="markMessageRead(${m.id})">✓ Lu</button>`:''}
+                        <button class="btn btn-danger btn-sm" onclick="deleteMessage(${m.id})">🗑️</button>
+                    </div>
+                </div>
+                ${m.subject?`<div style="font-size:.75rem;font-weight:600;color:var(--teal);margin-bottom:.3rem">${esc(m.subject)}</div>`:''}
+                <div style="font-size:.78rem;color:#555;white-space:pre-wrap;line-height:1.5">${esc(m.message)}</div>
+            </div>`}).join('')}
+    </div></div>`;
+}
+
+async function markMessageRead(id){
+    await db.from('contact_messages').update({read:true}).eq('id',id);
+    await loadMessages();render();
+}
+
+async function deleteMessage(id){
+    if(!confirm('Supprimer ce message ?'))return;
+    await db.from('contact_messages').delete().eq('id',id);
+    await loadMessages();render();
+}
+
+function renderAdmins(){
+    const admins=state.adminUsers||[];
+    return `<div class="card"><div class="card-header"><h2>🔐 Utilisateurs backoffice</h2></div>
+    <div class="card-body">
+        <div class="form-section">
+            <h4 style="font-size:.85rem;font-weight:600;margin-bottom:.6rem">Ajouter un admin</h4>
+            <div style="display:flex;gap:.5rem;align-items:end">
+                <div style="flex:1"><label class="label">Email du compte Repasio</label><input class="input" id="new-admin-email" placeholder="email@exemple.fr"></div>
+                <button class="btn btn-primary" onclick="addAdmin()">Ajouter</button>
+            </div>
+            <p style="font-size:.68rem;color:#999;margin-top:.4rem">Le compte doit exister dans Repasio (inscription classique).</p>
+        </div>
+        <table class="data-table"><thead><tr><th>UUID</th><th>Email</th><th>Rôle</th><th>Ajouté le</th><th>Actions</th></tr></thead>
+        <tbody>${admins.map(a=>{
+            const isSelf=a.id===state.user.id;
+            const date=a.created_at?new Date(a.created_at).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'}):'—';
+            return `<tr>
+                <td style="font-size:.65rem;color:#999;font-family:monospace">${a.id.substring(0,8)}...</td>
+                <td style="font-weight:600">${a.email||'—'}</td>
+                <td><span class="tag ${a.role==='super_admin'?'tag-gold':'tag-teal'}">${a.role||'admin'}</span></td>
+                <td>${date}</td>
+                <td>${isSelf?'<span style="font-size:.68rem;color:#999">Vous</span>':`<button class="btn btn-danger btn-sm" onclick="removeAdmin('${a.id}')">Retirer</button>`}</td>
+            </tr>`}).join('')}
+        ${admins.length===0?'<tr><td colspan="5" style="text-align:center;color:#999;padding:1rem">Aucun admin</td></tr>':''}
+        </tbody></table>
+    </div></div>`;
+}
+
+async function addAdmin(){
+    const email=document.getElementById('new-admin-email')?.value?.trim();
+    if(!email){showToast('Entrez un email');return}
+    const{data:uid}=await db.rpc('find_user_by_email',{search_email:email});
+    if(!uid){showToast('Aucun compte Repasio avec cet email');return}
+    try{
+        const{error}=await db.from('admin_users').insert([{id:uid,role:'admin'}]);
+        if(error)throw error;
+        await loadAdminUsers();showToast('Admin ajoute');render();
+    }catch(e){showToast('Erreur: '+(e.message||e))}
+}
+
+async function removeAdmin(uid){
+    if(uid===state.user.id){showToast('Impossible de se retirer soi-meme');return}
+    if(!confirm('Retirer cet admin ?'))return;
+    try{
+        const{error}=await db.from('admin_users').delete().eq('id',uid);
+        if(error)throw error;
+        await loadAdminUsers();showToast('Admin retire');render();
+    }catch(e){showToast('Erreur: '+(e.message||e))}
+}
+
+document.addEventListener('DOMContentLoaded',initApp);
+</script>
+</body>
+</html>

@@ -12,7 +12,7 @@
     <meta name="keywords" content="planificateur repas, planning repas famille, menu semaine, liste de courses, gestion stock alimentaire, budget courses, batch cooking, meal planner, anti-gaspillage">
     <meta name="author" content="Repasio">
     <meta name="robots" content="index, follow">
-    <link rel="canonical" href="https://repasio.netlify.app/">
+    <link rel="canonical" href="https://www.repasio.fr/">
 
     <!-- Security headers via meta -->
     <meta http-equiv="X-Frame-Options" content="DENY">
@@ -24,10 +24,10 @@
     <meta property="og:type" content="website">
     <meta property="og:title" content="Repasio — Planificateur de repas familial intelligent">
     <meta property="og:description" content="Planifiez vos repas en famille, gérez votre stock, générez vos listes de courses et maîtrisez votre budget alimentaire.">
-    <meta property="og:url" content="https://repasio.netlify.app/">
+    <meta property="og:url" content="https://www.repasio.fr/">
     <meta property="og:site_name" content="Repasio">
     <meta property="og:locale" content="fr_FR">
-    <meta property="og:image" content="https://repasio.netlify.app/og-image.png">
+    <meta property="og:image" content="https://www.repasio.fr/og-image.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
 
@@ -35,7 +35,7 @@
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Repasio — Planificateur de repas familial intelligent">
     <meta name="twitter:description" content="Planifiez vos repas, gérez votre stock, générez vos listes de courses. Gratuit 14 jours.">
-    <meta name="twitter:image" content="https://repasio.netlify.app/og-image.png">
+    <meta name="twitter:image" content="https://www.repasio.fr/og-image.png">
 
     <!-- Structured Data (Schema.org) -->
     <script type="application/ld+json">
@@ -43,7 +43,7 @@
         "@context": "https://schema.org",
         "@type": "WebApplication",
         "name": "Repasio",
-        "url": "https://repasio.netlify.app",
+        "url": "https://www.repasio.fr",
         "description": "Planificateur de repas familial intelligent avec gestion du stock, budget et liste de courses automatique.",
         "applicationCategory": "LifestyleApplication",
         "operatingSystem": "Web",
@@ -679,14 +679,20 @@
                 db.auth.onAuthStateChange(async (event, session) => {
                     console.log('[auth] event:', event, 'hasSession:', !!session);
                     if (event === 'TOKEN_REFRESHED' && !session) { await db.auth.signOut(); state.user = null; resetState(); render(); return; }
-                    if (event === 'SIGNED_OUT') { state.user = null; resetState(); render(); return; }
+                    if (event === 'SIGNED_OUT') {
+                        // Don't reset if onboarding is in progress (transient SIGNED_OUT)
+                        if (state.showOnboarding && state._ob) return;
+                        state.user = null; resetState(); render(); return;
+                    }
                     if (session?.user) {
                         state.user = session.user;
                         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+                            // Don't reload/re-init if onboarding is already in progress
+                            if (state.showOnboarding && state._ob) { render(); return; }
                             await loadAllData();
                             if (shouldShowOnboarding()) { state.showOnboarding = true; state.onboardingStep = 0; }
                         }
-                    } else { state.user = null; resetState(); }
+                    } else if (!state.showOnboarding) { state.user = null; resetState(); }
                     render();
                 });
 
@@ -2250,7 +2256,7 @@
                 { id:'planning', icon:'📅', label:'Planning', premium: false },
                 { id:'recettes', icon:'📖', label:'Recettes', premium: false },
                 { id:'ingredients', icon:'🥕', label:'Aliments', premium: false },
-                { id:'stock', icon:'📦', label:'Stock', premium: false },
+                { id:'stock', icon:'📦', label:'Placards', premium: false },
                 { id:'famille', icon:'👥', label:'Famille', premium: false },
                 { id:'preferences', icon:'⚙️', label:'Préférences', premium: false }
             ];
@@ -2262,7 +2268,7 @@
                 { id:'planning', icon:'📅', label:'Planning', premium: false },
                 { id:'recettes', icon:'📖', label:'Recettes', premium: false },
                 { id:'ingredients', icon:'🥕', label:'Aliments', premium: false },
-                { id:'stock', icon:'📦', label:'Stock', premium: false },
+                { id:'stock', icon:'📦', label:'Placards', premium: false },
                 { id:'famille', icon:'👥', label:'Famille', premium: false },
                 { id:'preferences', icon:'⚙️', label:'Préférences', premium: false }
             ];
@@ -2541,11 +2547,11 @@
                             </div>
                         </div>
                         <div style="margin-bottom: 0.9rem;">
-                            <label class="label">Options diététiques</label>
+                            <label class="label">Contient (pour filtrage des restrictions)</label>
                             <div style="display:flex;flex-wrap:wrap;gap:0.3rem;">
-                                ${(state.dietaryOptions.length > 0 ? state.dietaryOptions.map(d => d.label||d.name||'').filter(Boolean) : ['Sans porc','Sans gluten','Végétarien','Végétalien','Sans lactose','Halal','Casher','Sans fruits de mer']).map(tag => {
+                                ${(['Porc','Gluten','Lactose','Fruits à coque','Arachides','Soja','Poisson','Crustacés','Oeufs','Viande','Alcool']).map(tag => {
                                     const active = (r.dietary_info || []).includes(tag);
-                                    return `<button type="button" style="padding:3px 8px;border-radius:4px;font-size:0.68rem;font-weight:600;border:1px solid ${active?'var(--teal)':'#D5DAD8'};background:${active?'#E6F2F0':'white'};color:${active?'var(--teal)':'#666'};cursor:pointer;" onclick="if(!${target}.dietary_info)${target}.dietary_info=[];const i=${target}.dietary_info.indexOf('${tag}');if(i>=0)${target}.dietary_info.splice(i,1);else ${target}.dietary_info.push('${tag}');render();">${active?'✓ ':''}${tag}</button>`;
+                                    return `<button type="button" style="padding:3px 8px;border-radius:4px;font-size:0.68rem;font-weight:600;border:1px solid ${active?'#E74C3C':'#D5DAD8'};background:${active?'#FDEDEC':'white'};color:${active?'#C0392B':'#666'};cursor:pointer;" onclick="if(!${target}.dietary_info)${target}.dietary_info=[];const i=${target}.dietary_info.indexOf('${tag}');if(i>=0)${target}.dietary_info.splice(i,1);else ${target}.dietary_info.push('${tag}');render();">${active?'⚠️ ':''}${tag}</button>`;
                                 }).join('')}
                             </div>
                         </div>
@@ -2725,7 +2731,7 @@
 
         function renderStockPage() {
             return `<div class="card fade-in">
-                <div class="card-header"><div><h2 style="font-size: 1.1rem; font-weight: 700; margin: 0;">📦 Mon Stock</h2><p style="font-size: 0.72rem; color: #6B7280; margin: 0.15rem 0 0;">${state.stockItems.length} aliments en stock</p></div></div>
+                <div class="card-header"><div><h2 style="font-size: 1.1rem; font-weight: 700; margin: 0;">📦 Mes Placards</h2><p style="font-size: 0.72rem; color: #6B7280; margin: 0.15rem 0 0;">${state.stockItems.length} aliments en stock</p></div></div>
                 <div class="card-body">${renderStockContent()}</div>
             </div>`;
         }
@@ -2782,12 +2788,19 @@
         function calculateKcal(member) {
             if (!member.age || !member.weight || !member.height || !member.gender) return null;
             const w = parseFloat(member.weight), h = parseInt(member.height), a = parseInt(member.age);
-            // Mifflin-St Jeor
+            // Mifflin-St Jeor : BMR
             let bmr = member.gender === 'Homme' 
                 ? (10 * w) + (6.25 * h) - (5 * a) + 5 
                 : (10 * w) + (6.25 * h) - (5 * a) - 161;
-            const factors = {'Sédentaire': 1.2, 'Légère': 1.375, 'Modérée': 1.55, 'Active': 1.725, 'Très active': 1.9};
-            return Math.round(bmr * (factors[member.activity] || 1.55));
+            // Enfant : Harris-Benedict simplifié
+            if (member.gender === 'Enfant') bmr = (10 * w) + (6.25 * h) - (5 * a) + 5;
+            const factors = {'Sédentaire': 1.2, 'Légère': 1.375, 'Modérée': 1.55, 'Active': 1.725, 'Sportive': 1.9};
+            let tdee = Math.round(bmr * (factors[member.activity] || 1.55));
+            // Ajustement selon objectif
+            const goal = member.goal || 'Maintien';
+            if (goal === 'Perte') tdee = Math.round(tdee * 0.8); // -20%
+            else if (goal === 'Prise') tdee = Math.round(tdee * 1.15); // +15%
+            return tdee;
         }
 
         function estimatePortions(member) {
@@ -3014,98 +3027,325 @@
         function completeOnboarding() {
             try { localStorage.setItem('repasio_onboarding_done_' + state.user.id, '1'); } catch(e) {}
             state.showOnboarding = false;
+            state._ob = null;
             render();
+        }
+
+        function initOnboarding() {
+            state._ob = {
+                step: 0,
+                members: [],
+                currentMember: { name: '', age: '', gender: '', weight: '', height: '', activity: 'Modérée', goal: 'Maintien' },
+                addingMore: false,
+                dietary: [],
+                allergies: [],
+                appliances: [],
+                stock: [],
+                meals: { 'Petit-déjeuner': true, 'Déjeuner': true, 'Goûter': false, 'Dîner': true },
+                days: { Lun:true, Mar:true, Mer:true, Jeu:true, Ven:true, Sam:true, Dim:true }
+            };
         }
 
         function renderOnboarding() {
             if (!state.showOnboarding) return '';
-            const step = state.onboardingStep;
-            const steps = [
-                { title: 'Bienvenue ! 🍽️', content: `
-                    <div style="text-align: center; padding: 0.5rem 0;">
-                        <div style="font-size: 3rem; margin-bottom: 0.8rem;">👋</div>
-                        <p style="font-size: 1rem; color: var(--teal); font-weight: 600; margin-bottom: 0.5rem;">4 étapes pour que la magie opère</p>
-                        <div style="display: flex; justify-content: center; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: #666; margin-top: 1rem;">
-                            <div style="text-align: center;"><div style="font-size: 1.5rem;">👥</div><div>Famille</div></div>
-                            <div style="font-size: 1rem; color: var(--teal);">→</div>
-                            <div style="text-align: center;"><div style="font-size: 1.5rem;">⚙️</div><div>Préférences</div></div>
-                            <div style="font-size: 1rem; color: var(--teal);">→</div>
-                            <div style="text-align: center;"><div style="font-size: 1.5rem;">📦</div><div>Stock</div></div>
-                            <div style="font-size: 1rem; color: var(--teal);">→</div>
-                            <div style="text-align: center;"><div style="font-size: 1.5rem;">✨</div><div>Générer !</div></div>
-                        </div>
-                    </div>
-                `, action: () => { state.activeTab = 'family'; state.onboardingStep++; render(); }, btnText: 'C\'est parti ! →' },
-                { title: 'Étape 1 — Votre famille 👥', content: `
-                    <div style="text-align: center; padding: 0.5rem 0;">
-                        <div style="background: #E6F2F0; border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1rem;">
-                            <span style="font-size: 2rem;">👥</span>
-                            <p style="font-size: 0.88rem; font-weight: 600; color: var(--teal); margin: 0.5rem 0 0;">Ajoutez chaque membre de votre famille</p>
-                        </div>
-                        <p style="font-size: 0.82rem; color: #555; line-height: 1.6;">Les calories et portions seront calculées <strong>automatiquement</strong> selon l'âge, le poids et l'activité de chacun.</p>
-                        <div style="background: #FFF6E6; padding: 0.6rem; border-radius: var(--radius-sm); margin-top: 0.8rem; font-size: 0.78rem; color: var(--gold-dark);">
-                            👆 Remplissez le formulaire ci-dessous puis revenez ici pour continuer !
-                        </div>
-                    </div>
-                `, action: () => { state.activeTab = 'preferences'; state.onboardingStep++; render(); }, btnText: 'Étape suivante : Préférences →' },
-                { title: 'Étape 2 — Vos préférences ⚙️', content: `
-                    <div style="text-align: center; padding: 0.5rem 0;">
-                        <div style="background: #E6F2F0; border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1rem;">
-                            <span style="font-size: 2rem;">⚙️</span>
-                            <p style="font-size: 0.88rem; font-weight: 600; color: var(--teal); margin: 0.5rem 0 0;">Configurez vos restrictions et appareils</p>
-                        </div>
-                        <div style="display: flex; justify-content: center; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem;">
-                            <span style="background: #F8FAF9; padding: 0.3rem 0.6rem; border-radius: 6px; font-size: 0.78rem;">🚫 Sans porc, halal...</span>
-                            <span style="background: #F8FAF9; padding: 0.3rem 0.6rem; border-radius: 6px; font-size: 0.78rem;">⚠️ Allergies</span>
-                            <span style="background: #F8FAF9; padding: 0.3rem 0.6rem; border-radius: 6px; font-size: 0.78rem;">🍳 Four, robot...</span>
-                        </div>
-                        <p style="font-size: 0.78rem; color: #888; margin-top: 0.6rem;">Configurez aussi qui mange quoi et quand dans la matrice des repas, puis cliquez <strong>💾 Enregistrer</strong> !</p>
-                    </div>
-                `, action: () => { state.activeTab = 'stock'; state.onboardingStep++; render(); }, btnText: 'Étape suivante : Stock →' },
-                { title: 'Étape 3 — Votre stock 📦', content: `
-                    <div style="text-align: center; padding: 0.5rem 0;">
-                        <div style="background: #FFF6E6; border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1rem;">
-                            <span style="font-size: 2rem;">📦</span>
-                            <p style="font-size: 0.88rem; font-weight: 600; color: var(--gold-dark); margin: 0.5rem 0 0;">Renseignez ce que vous avez dans vos placards</p>
-                        </div>
-                        <div style="background: #F0FFF4; padding: 0.8rem; border-radius: var(--radius-sm); margin-bottom: 0.6rem; text-align: left; font-size: 0.82rem; color: #22543D; line-height: 1.6;">
-                            <strong>🔑 C'est la clé de la magie !</strong><br>
-                            Ajoutez au moins <strong>quelques aliments</strong> de vos placards (pâtes, riz, huile, oeufs...) pour que le générateur puisse proposer des menus adaptés.
-                        </div>
-                        <p style="font-size: 0.75rem; color: #666;">Plus votre stock est renseigné, plus les menus seront pertinents et la liste de courses précise !</p>
-                    </div>
-                `, action: () => { state.activeTab = 'planning'; state.onboardingStep++; render(); }, btnText: 'Dernière étape →' },
-                { title: 'C\'est prêt ! 🚀', content: `
-                    <div style="text-align: center; padding: 0.3rem 0;">
-                        <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">✨</div>
-                        <p style="font-size: 0.95rem; color: var(--teal); font-weight: 600;">Vous pouvez maintenant générer votre premier menu !</p>
-                        <p style="font-size: 0.82rem; color: #555; margin-top: 0.5rem; line-height: 1.6;">Cliquez sur <strong>✨ Générer menu</strong> dans l'onglet Planning. Le générateur s'occupe de tout : équilibre, saison, budget, stock...</p>
-                    </div>
-                `, action: null }
-            ];
+            if (!state._ob) initOnboarding();
+            const ob = state._ob;
+            const step = ob.step;
 
-            const s = steps[step];
-            const isLast = step >= steps.length - 1;
-            const nextAction = s.action ? `(${s.action.toString()})()` : 'state.onboardingStep++;render();';
-            return `<div class="modal-overlay" style="z-index: 4000;">
-                <div class="modal" style="max-width: 460px;">
-                    <div class="modal-header">
-                        <h3 style="margin: 0; font-weight: 700; font-size: 1rem;">${s.title}</h3>
-                        <span style="font-size: 0.7rem; color: #999;">${step + 1}/${steps.length}</span>
+            const wrap = (content) => `<div class="modal-overlay" style="z-index:4000;">
+                <div style="max-width:440px;width:92%;margin:auto;margin-top:8vh;background:white;border-radius:20px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.15);">
+                    <div style="background:linear-gradient(135deg,var(--teal),var(--teal-light));padding:1rem 1.2rem;display:flex;align-items:center;justify-content:space-between;">
+                        <div style="display:flex;align-items:center;gap:0.5rem;">
+                            <div style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;font-size:1.1rem;">🍽️</div>
+                            <div><div style="color:white;font-weight:700;font-size:0.95rem;">Repasio</div><div style="color:rgba(255,255,255,0.7);font-size:0.65rem;">Configuration rapide</div></div>
+                        </div>
+                        <button onclick="completeOnboarding();" style="background:rgba(255,255,255,0.15);border:none;color:white;font-size:0.65rem;padding:0.3rem 0.6rem;border-radius:12px;cursor:pointer;">Passer ›</button>
                     </div>
-                    <div class="modal-body">${s.content}</div>
-                    <div style="display: flex; justify-content: space-between; padding: 0 1.2rem 1.2rem;">
-                        ${step > 0 ? `<button class="btn btn-secondary" onclick="state.onboardingStep--;render();">← Précédent</button>` : '<div></div>'}
-                        ${!isLast
-                            ? `<button class="btn btn-primary" onclick="${nextAction}">${s.btnText || (s.action ? 'Ouvrir et continuer →' : 'Suivant →')}</button>`
-                            : `<button class="btn btn-primary" onclick="state.activeTab='planning';completeOnboarding();">Allons-y ! ✨</button>`
-                        }
-                    </div>
-                    <div style="text-align: center; padding-bottom: 0.8rem;">
-                        <button style="background: none; border: none; color: #999; font-size: 0.7rem; cursor: pointer; font-family: inherit;" onclick="completeOnboarding();">Passer l'introduction</button>
-                    </div>
+                    <div style="padding:1.2rem;">${content}</div>
                 </div>
             </div>`;
+
+            const bubble = (text) => `<div style="background:#F0F7F6;border-radius:0 16px 16px 16px;padding:0.8rem 1rem;margin-bottom:0.8rem;font-size:0.85rem;line-height:1.5;color:#333;">${text}</div>`;
+            const progress = `<div style="display:flex;gap:3px;margin-bottom:1rem;">${[0,1,2,3,4,5,6,7].map(i => `<div style="flex:1;height:3px;border-radius:2px;background:${i<=step?'var(--teal)':'#E8ECEA'};transition:all 0.3s;"></div>`).join('')}</div>`;
+
+            // STEP 0 — Bienvenue
+            if (step === 0) {
+                const name = state.user?.user_metadata?.name || '';
+                return wrap(`${progress}
+                    <div style="text-align:center;margin-bottom:1rem;">
+                        <div style="font-size:2.5rem;margin-bottom:0.3rem;">👋</div>
+                    </div>
+                    ${bubble(`Salut${name ? ' <strong>'+esc(name)+'</strong>' : ''} ! Je vais t'aider à configurer Repasio en quelques questions. Ça prend 2 minutes !`)}
+                    <button class="btn btn-primary" style="width:100%;justify-content:center;padding:0.7rem;border-radius:12px;font-size:0.9rem;" onclick="state._ob.step=1;render();">C'est parti ! →</button>
+                `);
+            }
+
+            // STEP 1 — Qui es-tu ? (premier membre)
+            if (step === 1) {
+                const m = ob.currentMember;
+                return wrap(`${progress}
+                    ${bubble(ob.members.length === 0 ? "Commençons par <strong>toi</strong> ! Comment tu t'appelles ?<br><span style='font-size:0.72rem;color:#888;'>Modifiable ensuite dans l'onglet 👥 Famille</span>" : "Super ! Un autre membre de la famille ?")}
+                    <div style="display:flex;flex-direction:column;gap:0.6rem;">
+                        <input type="text" class="input" placeholder="Prénom" value="${esc(m.name)}" oninput="state._ob.currentMember.name=this.value" style="border-radius:10px;">
+                        <div style="display:flex;gap:0.4rem;">
+                            <input type="number" class="input" placeholder="Âge" value="${m.age}" oninput="state._ob.currentMember.age=this.value" style="border-radius:10px;flex:1;">
+                            <input type="number" class="input" placeholder="Poids (kg)" value="${m.weight}" oninput="state._ob.currentMember.weight=this.value" style="border-radius:10px;flex:1;">
+                            <input type="number" class="input" placeholder="Taille (cm)" value="${m.height}" oninput="state._ob.currentMember.height=this.value" style="border-radius:10px;flex:1;">
+                        </div>
+                        <div style="display:flex;gap:0.3rem;">
+                            ${['Homme','Femme','Enfant'].map(g => `<button onclick="state._ob.currentMember.gender='${g}';render();" style="flex:1;padding:0.5rem;border-radius:10px;border:2px solid ${m.gender===g?'var(--teal)':'#E8ECEA'};background:${m.gender===g?'#E6F2F0':'white'};cursor:pointer;font-size:0.8rem;font-weight:${m.gender===g?'700':'400'};color:${m.gender===g?'var(--teal)':'#666'};font-family:inherit;">${g==='Homme'?'👨':g==='Femme'?'👩':'👶'} ${g}</button>`).join('')}
+                        </div>
+                        <div style="font-size:0.72rem;color:#888;margin:-0.2rem 0;">Niveau d'activité :</div>
+                        <div style="display:flex;gap:0.3rem;">
+                            ${['Sédentaire','Légère','Modérée','Active','Sportive'].map(a => `<button onclick="state._ob.currentMember.activity='${a}';render();" style="flex:1;padding:0.35rem 0.15rem;border-radius:8px;border:1.5px solid ${m.activity===a?'var(--teal)':'#E8ECEA'};background:${m.activity===a?'#E6F2F0':'white'};cursor:pointer;font-size:0.58rem;font-weight:${m.activity===a?'600':'400'};color:${m.activity===a?'var(--teal)':'#888'};font-family:inherit;">${a}</button>`).join('')}
+                        </div>
+                        <div style="font-size:0.72rem;color:#888;margin:-0.2rem 0;">Objectif :</div>
+                        <div style="display:flex;gap:0.3rem;">
+                            ${[{k:'Perte',icon:'📉',l:'Perte de poids'},{k:'Maintien',icon:'⚖️',l:'Maintien'},{k:'Prise',icon:'💪',l:'Prise de masse'}].map(g => `<button onclick="state._ob.currentMember.goal='${g.k}';render();" style="flex:1;padding:0.45rem 0.2rem;border-radius:8px;border:1.5px solid ${m.goal===g.k?'var(--teal)':'#E8ECEA'};background:${m.goal===g.k?'#E6F2F0':'white'};cursor:pointer;font-size:0.65rem;font-weight:${m.goal===g.k?'600':'400'};color:${m.goal===g.k?'var(--teal)':'#888'};font-family:inherit;text-align:center;">${g.icon}<br>${g.l}</button>`).join('')}
+                        </div>
+                        <button class="btn btn-primary" style="width:100%;justify-content:center;padding:0.65rem;border-radius:12px;" onclick="obAddMember();">
+                            ${ob.members.length === 0 ? 'Valider et continuer →' : 'Ajouter ce membre →'}
+                        </button>
+                        ${ob.members.length > 0 ? `
+                            <div style="display:flex;flex-direction:column;gap:0.3rem;margin-top:0.2rem;">
+                                ${ob.members.map((m,i) => `<div style="display:flex;align-items:center;gap:0.4rem;background:#E6F2F0;padding:0.3rem 0.6rem;border-radius:8px;">
+                                    <span style="flex:1;font-size:0.78rem;color:var(--teal);font-weight:600;">✓ ${esc(m.name)} <span style="font-weight:400;font-size:0.68rem;color:#666;">${m.age}ans • ${m.gender} • ${m.goal}</span></span>
+                                    <button onclick="state._ob.currentMember={...state._ob.members[${i}]};state._ob.members.splice(${i},1);render();" style="background:none;border:none;cursor:pointer;font-size:0.7rem;color:var(--teal);">✏️</button>
+                                    <button onclick="state._ob.members.splice(${i},1);render();" style="background:none;border:none;cursor:pointer;font-size:0.7rem;color:#E74C3C;">✕</button>
+                                </div>`).join('')}
+                            </div>
+                            <button class="btn btn-secondary" style="width:100%;justify-content:center;border-radius:12px;font-size:0.82rem;" onclick="state._ob.step=2;render();">C'est tout le monde ! Continuer →</button>
+                        ` : ''}
+                    </div>
+                `);
+            }
+
+            // STEP 2 — Restrictions alimentaires
+            if (step === 2) {
+                const diets = state.dietaryOptions.length > 0
+                    ? state.dietaryOptions.filter(d => d.category === 'restriction' || d.category === 'regime')
+                    : [{code:'sans_porc',label:'Sans porc',icon:'🐷'},{code:'vegetarien',label:'Végétarien',icon:'🥬'},{code:'vegan',label:'Végan',icon:'🌱'},{code:'sans_gluten',label:'Sans gluten',icon:'🌾'},{code:'sans_lactose',label:'Sans lactose',icon:'🥛'},{code:'halal',label:'Halal',icon:'☪️'}];
+                return wrap(`${progress}
+                    ${bubble("Des <strong>restrictions alimentaires</strong> à prendre en compte ?<br><span style='font-size:0.72rem;color:#888;'>Modifiable ensuite dans l'onglet ⚙️ Préférences</span>")}
+                    <div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-bottom:1rem;">
+                        ${diets.map(d => {
+                            const code = d.code || d.label || '';
+                            const label = d.label || d.name || '';
+                            const icon = d.icon || '';
+                            const active = ob.dietary.includes(code);
+                            return `<button onclick="const c='${code}';const i=state._ob.dietary.indexOf(c);if(i>=0)state._ob.dietary.splice(i,1);else state._ob.dietary.push(c);render();" style="padding:0.5rem 0.8rem;border-radius:10px;border:2px solid ${active?'var(--teal)':'#E8ECEA'};background:${active?'#E6F2F0':'white'};cursor:pointer;font-size:0.8rem;font-weight:${active?'600':'400'};color:${active?'var(--teal)':'#555'};font-family:inherit;">${icon} ${label}</button>`;
+                        }).join('')}
+                    </div>
+                    <div style="display:flex;gap:0.4rem;">
+                        <button class="btn btn-secondary" style="flex:1;justify-content:center;border-radius:12px;" onclick="state._ob.step=3;render();">Aucune</button>
+                        <button class="btn btn-primary" style="flex:1;justify-content:center;border-radius:12px;" onclick="state._ob.step=3;render();">Continuer →</button>
+                    </div>
+                `);
+            }
+
+            // STEP 3 — Allergies
+            if (step === 3) {
+                const allergies = state.dietaryOptions.length > 0
+                    ? state.dietaryOptions.filter(d => d.category === 'allergie')
+                    : [{code:'fruits_coque',label:'Fruits à coque',icon:'🥜'},{code:'arachides',label:'Arachides',icon:'🥜'},{code:'soja',label:'Soja',icon:'🫘'},{code:'poisson',label:'Poisson',icon:'🐟'},{code:'crustaces',label:'Crustacés',icon:'🦐'},{code:'oeufs',label:'Oeufs',icon:'🥚'}];
+                return wrap(`${progress}
+                    ${bubble("Des <strong>allergies</strong> dans la famille ?<br><span style='font-size:0.72rem;color:#888;'>Modifiable ensuite dans l'onglet ⚙️ Préférences</span>")}
+                    <div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-bottom:1rem;">
+                        ${allergies.map(d => {
+                            const code = d.code || d.label || '';
+                            const label = d.label || d.name || '';
+                            const icon = d.icon || '';
+                            const active = ob.allergies.includes(code);
+                            return `<button onclick="const c='${code}';const i=state._ob.allergies.indexOf(c);if(i>=0)state._ob.allergies.splice(i,1);else state._ob.allergies.push(c);render();" style="padding:0.5rem 0.8rem;border-radius:10px;border:2px solid ${active?'#E74C3C':'#E8ECEA'};background:${active?'#FDEDEC':'white'};cursor:pointer;font-size:0.8rem;font-weight:${active?'600':'400'};color:${active?'#C0392B':'#555'};font-family:inherit;">${icon} ${label}</button>`;
+                        }).join('')}
+                    </div>
+                    <div style="display:flex;gap:0.4rem;">
+                        <button class="btn btn-secondary" style="flex:1;justify-content:center;border-radius:12px;" onclick="state._ob.step=4;render();">Aucune</button>
+                        <button class="btn btn-primary" style="flex:1;justify-content:center;border-radius:12px;" onclick="state._ob.step=4;render();">Continuer →</button>
+                    </div>
+                `);
+            }
+
+            // STEP 4 — Appareils de cuisine
+            if (step === 4) {
+                const appliances = state.applianceOptions.length > 0
+                    ? state.applianceOptions.map(a => ({ code: a.code||a.label||'', label: a.label||a.name||'', icon: a.icon||'🍳' }))
+                    : [{code:'four',label:'Four',icon:'🔥'},{code:'plaques',label:'Plaques',icon:'🍳'},{code:'micro_ondes',label:'Micro-ondes',icon:'📡'},{code:'robot_cuiseur',label:'Robot cuiseur',icon:'🤖'},{code:'airfryer',label:'Airfryer',icon:'🌀'},{code:'cocotte_minute',label:'Cocotte-minute',icon:'♨️'},{code:'plancha',label:'Plancha',icon:'🥩'},{code:'pas_cuisson',label:'Pas de cuisson',icon:'🥗'}];
+                return wrap(`${progress}
+                    ${bubble("De quels <strong>appareils de cuisine</strong> disposez-vous ?<br><span style='font-size:0.72rem;color:#888;'>Modifiable ensuite dans l'onglet ⚙️ Préférences</span>")}
+                    <div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-bottom:1rem;">
+                        ${appliances.map(a => {
+                            const active = ob.appliances.includes(a.code);
+                            return `<button onclick="const c='${a.code}';const i=state._ob.appliances.indexOf(c);if(i>=0)state._ob.appliances.splice(i,1);else state._ob.appliances.push(c);render();" style="padding:0.5rem 0.8rem;border-radius:10px;border:2px solid ${active?'var(--gold)':'#E8ECEA'};background:${active?'#FFF6E6':'white'};cursor:pointer;font-size:0.8rem;font-weight:${active?'600':'400'};color:${active?'var(--gold-dark)':'#555'};font-family:inherit;">${a.icon} ${a.label}</button>`;
+                        }).join('')}
+                    </div>
+                    <button class="btn btn-primary" style="width:100%;justify-content:center;border-radius:12px;" onclick="state._ob.step=5;render();">Continuer →</button>
+                `);
+            }
+
+            // STEP 5 — Stock de base (placards)
+            if (step === 5) {
+                const basics = [
+                    {cat:'Féculents', items:['Pâtes','Riz','Semoule','Pommes de terre','Pain','Farine']},
+                    {cat:'Huiles & condiments', items:['Huile d\'olive','Beurre','Sel','Poivre','Moutarde','Vinaigre']},
+                    {cat:'Conserves & secs', items:['Lentilles','Pois chiches','Tomates pelées','Thon','Maïs','Haricots rouges']},
+                    {cat:'Frais basiques', items:['Oeufs','Lait','Crème fraîche','Oignons','Ail','Citron']}
+                ];
+                return wrap(`${progress}
+                    ${bubble("Qu'avez-vous dans vos <strong>placards</strong> ? Cochez les basiques que vous avez en stock.<br><span style='font-size:0.72rem;color:#888;'>Gérez vos stocks ensuite dans l'onglet 📦 Placards</span>")}
+                    <div style="max-height:45vh;overflow-y:auto;margin-bottom:0.8rem;">
+                        ${basics.map(cat => `
+                            <div style="margin-bottom:0.6rem;">
+                                <div style="font-size:0.72rem;font-weight:600;color:#888;margin-bottom:0.3rem;">${cat.cat}</div>
+                                <div style="display:flex;flex-wrap:wrap;gap:0.3rem;">
+                                    ${cat.items.map(item => {
+                                        const active = ob.stock.includes(item);
+                                        return `<button onclick="const i=state._ob.stock.indexOf('${item.replace(/'/g,"\\'")}');if(i>=0)state._ob.stock.splice(i,1);else state._ob.stock.push('${item.replace(/'/g,"\\'")}');render();" style="padding:0.4rem 0.7rem;border-radius:8px;border:1.5px solid ${active?'var(--teal)':'#E8ECEA'};background:${active?'#E6F2F0':'white'};cursor:pointer;font-size:0.75rem;font-weight:${active?'600':'400'};color:${active?'var(--teal)':'#555'};font-family:inherit;">${active?'✓ ':''}${item}</button>`;
+                                    }).join('')}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div style="display:flex;gap:0.4rem;">
+                        <button class="btn btn-secondary" style="flex:1;justify-content:center;border-radius:12px;font-size:0.82rem;" onclick="state._ob.step=6;render();">Passer</button>
+                        <button class="btn btn-primary" style="flex:1;justify-content:center;border-radius:12px;" onclick="state._ob.step=6;render();">${ob.stock.length > 0 ? ob.stock.length + ' articles • ' : ''}Continuer →</button>
+                    </div>
+                `);
+            }
+
+            // STEP 6 — Quels repas ?
+            if (step === 6) {
+                const mealOpts = [
+                    { key: 'Petit-déjeuner', icon: '☀️', label: 'Petit-déjeuner' },
+                    { key: 'Déjeuner', icon: '🍽️', label: 'Déjeuner' },
+                    { key: 'Goûter', icon: '🍪', label: 'Goûter' },
+                    { key: 'Dîner', icon: '🌙', label: 'Dîner' }
+                ];
+                return wrap(`${progress}
+                    ${bubble("Quels <strong>repas</strong> voulez-vous planifier ?<br><span style='font-size:0.72rem;color:#888;'>Modifiable ensuite dans l'onglet ⚙️ Préférences</span>")}
+                    <div style="display:flex;flex-direction:column;gap:0.4rem;margin-bottom:1rem;">
+                        ${mealOpts.map(m => {
+                            const active = ob.meals[m.key];
+                            return `<button onclick="state._ob.meals['${m.key}']=!state._ob.meals['${m.key}'];render();" style="display:flex;align-items:center;gap:0.6rem;padding:0.7rem 1rem;border-radius:12px;border:2px solid ${active?'var(--teal)':'#E8ECEA'};background:${active?'#E6F2F0':'white'};cursor:pointer;font-size:0.88rem;font-weight:${active?'600':'400'};color:${active?'var(--teal)':'#555'};font-family:inherit;width:100%;text-align:left;">
+                                <span style="font-size:1.3rem;">${m.icon}</span>
+                                <span>${m.label}</span>
+                                <span style="margin-left:auto;font-size:1.1rem;">${active?'✓':''}</span>
+                            </button>`;
+                        }).join('')}
+                    </div>
+                    <button class="btn btn-primary" style="width:100%;justify-content:center;padding:0.7rem;border-radius:12px;font-size:0.9rem;" onclick="state._ob.step=7;render();">Continuer →</button>
+                `);
+            }
+
+            // STEP 7 — Quels jours ?
+            if (step === 7) {
+                const dayOpts = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+                const dayLabels = {Lun:'Lundi',Mar:'Mardi',Mer:'Mercredi',Jeu:'Jeudi',Ven:'Vendredi',Sam:'Samedi',Dim:'Dimanche'};
+                return wrap(`${progress}
+                    ${bubble("Et quels <strong>jours</strong> de la semaine ?<br><span style='font-size:0.72rem;color:#888;'>Modifiable ensuite dans l'onglet ⚙️ Préférences</span>")}
+                    <div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-bottom:1rem;">
+                        ${dayOpts.map(d => {
+                            const active = ob.days[d];
+                            return `<button onclick="state._ob.days['${d}']=!state._ob.days['${d}'];render();" style="flex:1;min-width:70px;padding:0.6rem 0.3rem;border-radius:10px;border:2px solid ${active?'var(--teal)':'#E8ECEA'};background:${active?'#E6F2F0':'white'};cursor:pointer;font-size:0.78rem;font-weight:${active?'700':'400'};color:${active?'var(--teal)':'#666'};font-family:inherit;text-align:center;">${dayLabels[d]}</button>`;
+                        }).join('')}
+                    </div>
+                    <button class="btn btn-primary" style="width:100%;justify-content:center;padding:0.7rem;border-radius:12px;font-size:0.9rem;" onclick="obFinalize();">Terminer la configuration ✨</button>
+                `);
+            }
+
+            return '';
+        }
+
+        function obAddMember() {
+            const m = state._ob.currentMember;
+            if (!m.name.trim()) { showToast('Entre un prénom'); return; }
+            if (!m.age) { showToast('Entre l\'âge'); return; }
+            if (!m.gender) { showToast('Sélectionne le genre'); return; }
+            state._ob.members.push({ ...m });
+            state._ob.currentMember = { name: '', age: '', gender: '', weight: '', height: '', activity: 'Modérée', goal: 'Maintien' };
+            render();
+        }
+
+        async function obFinalize() {
+            const ob = state._ob;
+            showToast('Configuration en cours...', 3000);
+
+            try {
+                // 1. Save family members
+                for (const m of ob.members) {
+                    const { error } = await db.from('family_members').insert([{
+                        user_id: state.user.id, name: m.name, age: parseInt(m.age),
+                        gender: m.gender, weight: parseFloat(m.weight) || null,
+                        height: parseFloat(m.height) || null, activity: m.activity, goal: m.goal
+                    }]).select();
+                    if (error) console.error('member insert error:', error);
+                }
+                await loadFamilyMembers();
+
+                // 2. Build mealSchedule
+                const schedule = {};
+                const activeMeals = Object.entries(ob.meals).filter(([,v]) => v).map(([k]) => k);
+                const activeDays = Object.entries(ob.days).filter(([,v]) => v).map(([k]) => k);
+                state.familyMembers.forEach(fm => {
+                    schedule[fm.id] = {};
+                    activeDays.forEach(d => { schedule[fm.id][d] = [...activeMeals]; });
+                    ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'].filter(d => !activeDays.includes(d)).forEach(d => { schedule[fm.id][d] = []; });
+                });
+                state.mealSchedule = schedule;
+
+                // 3. Save profile (correct column names)
+                console.log('[ob] saving profile:', { dietary: ob.dietary, allergies: ob.allergies, appliances: ob.appliances });
+                const profileData = {
+                    dietary_restrictions: ob.dietary,
+                    allergies: ob.allergies,
+                    kitchen_appliances: ob.appliances,
+                    meal_schedule: schedule
+                };
+                // Try update first, then insert if no row
+                const { error: updErr } = await db.from('profiles').update(profileData).eq('id', state.user.id);
+                if (updErr) {
+                    console.warn('[ob] update failed, trying upsert:', updErr.message);
+                    const { error: upsErr } = await db.from('profiles').upsert({ id: state.user.id, ...profileData }, { onConflict: 'id' });
+                    if (upsErr) console.error('[ob] upsert also failed:', upsErr.message);
+                }
+                console.log('[ob] profile saved ok');
+
+                // 4. Save stock items with smart default quantities
+                const defaultQty = {
+                    'Pâtes': {q:500,u:'g'}, 'Riz': {q:500,u:'g'}, 'Semoule': {q:500,u:'g'},
+                    'Pommes de terre': {q:1,u:'kg'}, 'Pain': {q:1,u:'piece'}, 'Farine': {q:1,u:'kg'},
+                    'Huile d\'olive': {q:750,u:'ml'}, 'Beurre': {q:250,u:'g'}, 'Sel': {q:500,u:'g'},
+                    'Poivre': {q:50,u:'g'}, 'Moutarde': {q:200,u:'g'}, 'Vinaigre': {q:500,u:'ml'},
+                    'Lentilles': {q:500,u:'g'}, 'Pois chiches': {q:400,u:'g'}, 'Tomates pelées': {q:400,u:'g'},
+                    'Thon': {q:200,u:'g'}, 'Maïs': {q:300,u:'g'}, 'Haricots rouges': {q:400,u:'g'},
+                    'Oeufs': {q:6,u:'piece'}, 'Lait': {q:1,u:'l'}, 'Crème fraîche': {q:200,u:'ml'},
+                    'Oignons': {q:500,u:'g'}, 'Ail': {q:100,u:'g'}, 'Citron': {q:3,u:'piece'}
+                };
+                if (ob.stock.length > 0) {
+                    for (const itemName of ob.stock) {
+                        const ing = state.ingredients.find(i => i.name.toLowerCase() === itemName.toLowerCase());
+                        if (ing) {
+                            const dq = defaultQty[itemName] || {q:500,u:'g'};
+                            const { error: stockErr } = await db.from('stock_items').insert([{
+                                user_id: state.user.id,
+                                ingredient_id: ing.id,
+                                quantity: dq.q,
+                                unit: dq.u
+                            }]);
+                            if (stockErr) console.warn('stock insert:', itemName, stockErr.message);
+                        }
+                    }
+                    await loadStockItems();
+                }
+
+                await loadProfile();
+                showToast('✅ Configuration terminée ! Vous pouvez générer votre premier menu.', 5000);
+                state.activeTab = 'planning';
+                completeOnboarding();
+            } catch(e) {
+                console.error('onboarding finalize error:', e);
+                showToast('Erreur: ' + e.message);
+            }
         }
 
         function renderFamille() {

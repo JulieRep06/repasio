@@ -3099,6 +3099,20 @@
             return Math.round(w / (h * h) * 10) / 10;
         }
 
+        function toggleHomeMeal(target, meal) {
+            const obj = target === 'state.editingMember' ? state.editingMember : state.newMember;
+            if (!obj || !obj.meal_config) return;
+            const hm = obj.meal_config.home_meals;
+            const i = hm.indexOf(meal);
+            if (i >= 0) hm.splice(i, 1); else hm.push(meal);
+            render();
+        }
+
+        function resetKcalTarget(target) {
+            const obj = target === 'state.editingMember' ? state.editingMember : state.newMember;
+            if (obj) { obj.custom_kcal_target = ''; render(); }
+        }
+
         function validateKcalTarget(member) {
             const target = parseInt(member.custom_kcal_target);
             if (!target) return { valid: true, msg: '' };
@@ -3725,34 +3739,34 @@
                                 const tdee = calculateKcal(m) || 0;
                                 const effectiveTarget = parseInt(m.custom_kcal_target) || tdee;
                                 const dayTarget = mc.target_100 ? effectiveTarget : Math.round(effectiveTarget * homePct / 100);
+                                const bmiVal = calculateBMI(m);
+                                const bmiHtml = bmiVal ? '<span style="font-size:0.65rem;padding:0.15rem 0.4rem;border-radius:6px;background:'+(bmiVal<18.5||bmiVal>30?'#FEE2E2':'#E6F2F0')+';color:'+(bmiVal<18.5||bmiVal>30?'#DC2626':'#059669')+';">IMC '+bmiVal+'</span>' : '';
+                                const valMsg = (()=>{ const v = validateKcalTarget(m); return v.msg ? '<div style="margin-bottom:0.4rem;font-size:0.68rem;color:'+(v.valid?'#D97706':'#DC2626')+';line-height:1.3;">'+v.msg+'</div>' : m.custom_kcal_target ? '<div style="margin-bottom:0.4rem;font-size:0.68rem;color:#059669;">✅ Objectif perso : '+m.custom_kcal_target+' kcal/j</div>' : ''; })();
+                                const mealBtns = allMeals.map(ml => {
+                                    const ck = homeMeals.includes(ml);
+                                    return '<button onclick="toggleHomeMeal(\''+target+'\',\''+ml+'\')" style="padding:0.25rem 0.5rem;border-radius:6px;border:1.5px solid '+(ck?'var(--teal)':'#E8ECEA')+';background:'+(ck?'#E6F2F0':'white')+';cursor:pointer;font-size:0.62rem;font-weight:'+(ck?'600':'400')+';color:'+(ck?'var(--teal)':'#999')+';font-family:inherit;">'+mealIcons[ml]+' '+ml+(ck?' ✓':'')+'</button>';
+                                }).join('');
+                                const summaryText = mc.target_100
+                                    ? '📊 Objectif journalier : <strong>'+effectiveTarget+' kcal</strong> répartis sur '+homeMeals.length+' repas maison ('+homePct+'% des créneaux)'
+                                    : '📊 Objectif journalier : <strong>'+dayTarget+' kcal</strong> ('+homePct+'% du TDEE — repas extérieurs non comptés)';
                                 return `
-                            <div style="margin-top: 0.6rem; padding-top: 0.5rem; border-top: 1px solid rgba(0,0,0,0.08);">
-                                <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.4rem;">
-                                    <span style="font-size: 0.72rem; color: #555;">TDEE estimé : <strong style="color: var(--teal);">${tdee} kcal/j</strong></span>
-                                    ${calculateBMI(m) ? '<span style="font-size: 0.65rem; padding: 0.15rem 0.4rem; border-radius: 6px; background: '+(calculateBMI(m)<18.5?'#FEE2E2':calculateBMI(m)>30?'#FEE2E2':'#E6F2F0')+'; color: '+(calculateBMI(m)<18.5||calculateBMI(m)>30?'#DC2626':'#059669')+';">IMC '+calculateBMI(m)+'</span>' : ''}
+                            <div style="margin-top:0.6rem;padding-top:0.5rem;border-top:1px solid rgba(0,0,0,0.08);">
+                                <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.4rem;">
+                                    <span style="font-size:0.72rem;color:#555;">TDEE estimé : <strong style="color:var(--teal);">${tdee} kcal/j</strong></span>
+                                    ${bmiHtml}
                                 </div>
-                                <div style="display: flex; gap: 0.4rem; align-items: center; margin-bottom: 0.5rem;">
-                                    <input type="number" class="input" placeholder="Objectif kcal (vide = auto)" value="${m.custom_kcal_target||''}" oninput="${target}.custom_kcal_target=this.value;render();" style="flex:1; font-size: 0.8rem;">
-                                    ${m.custom_kcal_target ? '<button onclick="'+target+'.custom_kcal_target=\\'\\';render();" style="background:none;border:none;cursor:pointer;font-size:0.75rem;color:#999;">↺ Auto</button>' : ''}
+                                <div style="display:flex;gap:0.4rem;align-items:center;margin-bottom:0.5rem;">
+                                    <input type="number" class="input" placeholder="Objectif kcal (vide = auto)" value="${m.custom_kcal_target||''}" oninput="${target}.custom_kcal_target=this.value;render();" style="flex:1;font-size:0.8rem;">
+                                    ${m.custom_kcal_target ? '<button onclick="resetKcalTarget(\''+target+'\')" style="background:none;border:none;cursor:pointer;font-size:0.75rem;color:#999;">↺ Auto</button>' : ''}
                                 </div>
-                                ${(()=>{ const v = validateKcalTarget(m); return v.msg ? '<div style="margin-bottom:0.4rem;font-size:0.68rem;color:'+(v.valid?'#D97706':'#DC2626')+';line-height:1.3;">'+v.msg+'</div>' : m.custom_kcal_target ? '<div style="margin-bottom:0.4rem;font-size:0.68rem;color:#059669;">✅ Objectif perso : '+m.custom_kcal_target+' kcal/j</div>' : ''; })()}
+                                ${valMsg}
                                 <div style="font-size:0.72rem;font-weight:600;color:#555;margin-bottom:0.3rem;">🏠 Repas pris à la maison :</div>
-                                <div style="display:flex;gap:0.25rem;flex-wrap:wrap;margin-bottom:0.4rem;">
-                                    ${allMeals.map(ml => {
-                                        const checked = homeMeals.includes(ml);
-                                        return '<button onclick="const mc='+target+'.meal_config;const hm=mc.home_meals;const i=hm.indexOf(\\''+ml+'\\');if(i>=0)hm.splice(i,1);else hm.push(\\''+ml+'\\');render();" style="padding:0.25rem 0.5rem;border-radius:6px;border:1.5px solid '+(checked?'var(--teal)':'#E8ECEA')+';background:'+(checked?'#E6F2F0':'white')+';cursor:pointer;font-size:0.62rem;font-weight:'+(checked?'600':'400')+';color:'+(checked?'var(--teal)':'#999')+';font-family:inherit;">'+mealIcons[ml]+' '+ml+(checked?' ✓':'')+'</button>';
-                                    }).join('')}
-                                </div>
+                                <div style="display:flex;gap:0.25rem;flex-wrap:wrap;margin-bottom:0.4rem;">${mealBtns}</div>
                                 <div style="display:flex;align-items:center;justify-content:space-between;padding:0.35rem 0.5rem;background:#F9FAFB;border-radius:6px;margin-bottom:0.3rem;">
                                     <span style="font-size:0.65rem;color:#555;">Atteindre 100% du TDEE sur les repas maison ?</span>
                                     <label style="position:relative;width:36px;height:18px;flex-shrink:0;"><input type="checkbox" ${mc.target_100?'checked':''} onchange="${target}.meal_config.target_100=this.checked;render();" style="opacity:0;width:0;height:0;"><span style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:${mc.target_100?'var(--teal)':'#ccc'};border-radius:18px;transition:.3s;"></span><span style="position:absolute;height:12px;width:12px;left:${mc.target_100?'20px':'3px'};bottom:3px;background:white;border-radius:50%;transition:.3s;"></span></label>
                                 </div>
-                                <div style="font-size:0.6rem;color:#9CA3AF;line-height:1.4;">
-                                    ${mc.target_100 
-                                        ? '📊 Objectif journalier : <strong>'+effectiveTarget+' kcal</strong> répartis sur '+homeMeals.length+' repas maison ('+homePct+'% des créneaux)'
-                                        : '📊 Objectif journalier : <strong>'+dayTarget+' kcal</strong> ('+homePct+'% du TDEE — repas extérieurs non comptés)'}
-                                    <br>BMR plancher : ${calculateBMR(m) || '—'} kcal
-                                </div>
+                                <div style="font-size:0.6rem;color:#9CA3AF;line-height:1.4;">${summaryText}<br>BMR plancher : ${calculateBMR(m) || '—'} kcal</div>
                             </div>`; })()
                             ` : ''}
                             `}

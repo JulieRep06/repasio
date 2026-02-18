@@ -3172,6 +3172,9 @@
             state.profileAppliances = state.profile.kitchen_appliances || [];
             state.defaultParticipants = state.profile.default_participants || [];
             state.mealSchedule = state.profile.meal_schedule || {};
+            // Clean orphan member IDs from schedule
+            const validMemberIds = state.familyMembers.map(m => String(m.id));
+            Object.keys(state.mealSchedule).forEach(mid => { if (!validMemberIds.includes(mid)) delete state.mealSchedule[mid]; });
             // Migration: if old defaultParticipants exists but no mealSchedule, build it
             if (state.defaultParticipants.length > 0 && Object.keys(state.mealSchedule).length === 0) {
                 const days = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
@@ -3238,9 +3241,12 @@
         // Get members who should participate in a specific day+meal from schedule
         function getScheduledMembers(day, mealType) {
             const members = [];
+            const validIds = state.familyMembers.map(m => m.id);
             for (const [mid, schedule] of Object.entries(state.mealSchedule)) {
+                const memberId = parseInt(mid);
+                if (!validIds.includes(memberId)) continue;
                 const dayMeals = schedule[day] || [];
-                if (dayMeals.includes(mealType)) members.push(parseInt(mid));
+                if (dayMeals.includes(mealType)) members.push(memberId);
             }
             return members;
         }

@@ -3712,65 +3712,55 @@
                             if (bmi && bmi > 30 && goal === 'Prise') return '<div style="margin-top:0.5rem;padding:0.5rem 0.7rem;background:#FEF3C7;border-radius:8px;font-size:0.72rem;color:#D97706;line-height:1.4;">⚠️ <strong>Attention :</strong> IMC de '+bmi+' (obésité). L\'objectif Prise de masse est à valider avec un professionnel.</div>';
                             return '';
                         })()}
-                        ${m.gender === 'Enfant' ? `
-                        <div style="margin-top: 0.7rem; padding: 0.6rem 0.8rem; background: #F3F4F6; border-radius: 10px;">
-                            <span style="font-size: 0.75rem; color: #6B7280;">👶 Le suivi calorique précis n'est pas disponible pour les enfants. Les repas sont adaptés automatiquement via les portions.</span>
-                        </div>` : `
-                        <div style="margin-top: 0.7rem; padding: 0.6rem 0.8rem; background: linear-gradient(135deg, #F0E6F6, #E6F2F0); border-radius: 10px;">
-                            ${!isPremium() ? `
-                            <div style="display: flex; align-items: center; justify-content: space-between;">
-                                <div><span style="font-weight: 600; font-size: 0.82rem;">🔒 Suivi kcal pour ${m.name||'ce membre'}</span><br><span style="font-size: 0.68rem; color: #6B7280;">Fonctionnalité Premium — Le générateur ajuste repas et collations selon l'objectif calorique</span></div>
-                            </div>
-                            <button onclick="startTrial()" style="margin-top:0.5rem;width:100%;padding:0.55rem;border:none;border-radius:8px;background:linear-gradient(135deg,#8B5CF6,#6D28D9);color:white;font-weight:600;font-size:0.78rem;cursor:pointer;font-family:inherit;">✨ Essai gratuit 14 jours — sans carte bancaire</button>
-                            ` : `
-                            <div style="display: flex; align-items: center; justify-content: space-between;">
-                                <div><span style="font-weight: 600; font-size: 0.82rem;">🎯 Suivi kcal pour ${m.name||'ce membre'}</span><br><span style="font-size: 0.68rem; color: #6B7280;">Le générateur ajustera les repas et collations selon l'objectif calorique</span>
-                                ${state.userPlan.plan==='trial' ? '<br><span style="font-size:0.6rem;color:#8B5CF6;">✨ Essai Premium — '+trialDaysLeft()+' jours restants</span>' : ''}</div>
-                                <label style="position:relative;width:44px;height:24px;flex-shrink:0;"><input type="checkbox" ${m.kcal_tracking?'checked':''} onchange="${target}.kcal_tracking=this.checked;render();" style="opacity:0;width:0;height:0;"><span style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:${m.kcal_tracking?'var(--teal)':'#ccc'};border-radius:24px;transition:.3s;"></span><span style="position:absolute;content:'';height:18px;width:18px;left:${m.kcal_tracking?'22px':'3px'};bottom:3px;background:white;border-radius:50%;transition:.3s;"></span></label>
-                            </div>
-                            ${m.kcal_tracking ? (()=>{
-                                if (!m.meal_config) { m.meal_config = { home_meals: ['Petit-déjeuner','Collation','Déjeuner','Goûter','Dîner'], target_100: true }; }
-                                const mc = m.meal_config;
-                                const allMeals = ['Petit-déjeuner','Collation','Déjeuner','Goûter','Dîner'];
-                                const mealIcons = {'Petit-déjeuner':'🌅','Collation':'🥜','Déjeuner':'🍽️','Goûter':'🍪','Dîner':'🌙'};
-                                const homeMeals = mc.home_meals || allMeals;
-                                const weights = {'Petit-déjeuner':20,'Collation':10,'Déjeuner':30,'Goûter':10,'Dîner':30};
-                                const homePct = homeMeals.reduce((s,ml) => s + (weights[ml]||0), 0);
-                                const tdee = calculateKcal(m) || 0;
-                                const effectiveTarget = parseInt(m.custom_kcal_target) || tdee;
-                                const dayTarget = mc.target_100 ? effectiveTarget : Math.round(effectiveTarget * homePct / 100);
-                                const bmiVal = calculateBMI(m);
-                                const bmiHtml = bmiVal ? '<span style="font-size:0.65rem;padding:0.15rem 0.4rem;border-radius:6px;background:'+(bmiVal<18.5||bmiVal>30?'#FEE2E2':'#E6F2F0')+';color:'+(bmiVal<18.5||bmiVal>30?'#DC2626':'#059669')+';">IMC '+bmiVal+'</span>' : '';
-                                const valMsg = (()=>{ const v = validateKcalTarget(m); return v.msg ? '<div style="margin-bottom:0.4rem;font-size:0.68rem;color:'+(v.valid?'#D97706':'#DC2626')+';line-height:1.3;">'+v.msg+'</div>' : m.custom_kcal_target ? '<div style="margin-bottom:0.4rem;font-size:0.68rem;color:#059669;">✅ Objectif perso : '+m.custom_kcal_target+' kcal/j</div>' : ''; })();
-                                const mealBtns = allMeals.map(ml => {
-                                    const ck = homeMeals.includes(ml);
-                                    return '<button onclick="toggleHomeMeal(\''+target+'\',\''+ml+'\')" style="padding:0.25rem 0.5rem;border-radius:6px;border:1.5px solid '+(ck?'var(--teal)':'#E8ECEA')+';background:'+(ck?'#E6F2F0':'white')+';cursor:pointer;font-size:0.62rem;font-weight:'+(ck?'600':'400')+';color:'+(ck?'var(--teal)':'#999')+';font-family:inherit;">'+mealIcons[ml]+' '+ml+(ck?' ✓':'')+'</button>';
-                                }).join('');
-                                const summaryText = mc.target_100
-                                    ? '📊 Objectif journalier : <strong>'+effectiveTarget+' kcal</strong> répartis sur '+homeMeals.length+' repas maison ('+homePct+'% des créneaux)'
-                                    : '📊 Objectif journalier : <strong>'+dayTarget+' kcal</strong> ('+homePct+'% du TDEE — repas extérieurs non comptés)';
-                                return `
-                            <div style="margin-top:0.6rem;padding-top:0.5rem;border-top:1px solid rgba(0,0,0,0.08);">
-                                <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.4rem;">
-                                    <span style="font-size:0.72rem;color:#555;">TDEE estimé : <strong style="color:var(--teal);">${tdee} kcal/j</strong></span>
-                                    ${bmiHtml}
-                                </div>
-                                <div style="display:flex;gap:0.4rem;align-items:center;margin-bottom:0.5rem;">
-                                    <input type="number" class="input" placeholder="Objectif kcal (vide = auto)" value="${m.custom_kcal_target||''}" oninput="${target}.custom_kcal_target=this.value;render();" style="flex:1;font-size:0.8rem;">
-                                    ${m.custom_kcal_target ? '<button onclick="resetKcalTarget(\''+target+'\')" style="background:none;border:none;cursor:pointer;font-size:0.75rem;color:#999;">↺ Auto</button>' : ''}
-                                </div>
-                                ${valMsg}
-                                <div style="font-size:0.72rem;font-weight:600;color:#555;margin-bottom:0.3rem;">🏠 Repas pris à la maison :</div>
-                                <div style="display:flex;gap:0.25rem;flex-wrap:wrap;margin-bottom:0.4rem;">${mealBtns}</div>
-                                <div style="display:flex;align-items:center;justify-content:space-between;padding:0.35rem 0.5rem;background:#F9FAFB;border-radius:6px;margin-bottom:0.3rem;">
-                                    <span style="font-size:0.65rem;color:#555;">Atteindre 100% du TDEE sur les repas maison ?</span>
-                                    <label style="position:relative;width:36px;height:18px;flex-shrink:0;"><input type="checkbox" ${mc.target_100?'checked':''} onchange="${target}.meal_config.target_100=this.checked;render();" style="opacity:0;width:0;height:0;"><span style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:${mc.target_100?'var(--teal)':'#ccc'};border-radius:18px;transition:.3s;"></span><span style="position:absolute;height:12px;width:12px;left:${mc.target_100?'20px':'3px'};bottom:3px;background:white;border-radius:50%;transition:.3s;"></span></label>
-                                </div>
-                                <div style="font-size:0.6rem;color:#9CA3AF;line-height:1.4;">${summaryText}<br>BMR plancher : ${calculateBMR(m) || '—'} kcal</div>
-                            </div>`; })()
-                            ` : ''}
-                            `}
-                        </div>`}
+                        ${(()=>{
+                            if (m.gender === 'Enfant') return '<div style="margin-top:0.7rem;padding:0.6rem 0.8rem;background:#F3F4F6;border-radius:10px;"><span style="font-size:0.75rem;color:#6B7280;">👶 Le suivi calorique précis n\'est pas disponible pour les enfants. Les repas sont adaptés automatiquement via les portions.</span></div>';
+                            let html = '<div style="margin-top:0.7rem;padding:0.6rem 0.8rem;background:linear-gradient(135deg,#F0E6F6,#E6F2F0);border-radius:10px;">';
+                            if (!isPremium()) {
+                                html += '<div style="display:flex;align-items:center;justify-content:space-between;"><div><span style="font-weight:600;font-size:0.82rem;">🔒 Suivi kcal pour '+(m.name||'ce membre')+'</span><br><span style="font-size:0.68rem;color:#6B7280;">Fonctionnalité Premium — Le générateur ajuste repas et collations selon l\'objectif calorique</span></div></div>';
+                                html += '<button onclick="startTrial()" style="margin-top:0.5rem;width:100%;padding:0.55rem;border:none;border-radius:8px;background:linear-gradient(135deg,#8B5CF6,#6D28D9);color:white;font-weight:600;font-size:0.78rem;cursor:pointer;font-family:inherit;">✨ Essai gratuit 14 jours — sans carte bancaire</button>';
+                            } else {
+                                const trialBadge = state.userPlan.plan==='trial' ? '<br><span style="font-size:0.6rem;color:#8B5CF6;">✨ Essai Premium — '+trialDaysLeft()+' jours restants</span>' : '';
+                                html += '<div style="display:flex;align-items:center;justify-content:space-between;"><div><span style="font-weight:600;font-size:0.82rem;">🎯 Suivi kcal pour '+(m.name||'ce membre')+'</span><br><span style="font-size:0.68rem;color:#6B7280;">Le générateur ajustera les repas et collations selon l\'objectif calorique</span>'+trialBadge+'</div>';
+                                html += '<label style="position:relative;width:44px;height:24px;flex-shrink:0;"><input type="checkbox" '+(m.kcal_tracking?'checked':'')+' onchange="'+target+'.kcal_tracking=this.checked;render();" style="opacity:0;width:0;height:0;"><span style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:'+(m.kcal_tracking?'var(--teal)':'#ccc')+';border-radius:24px;transition:.3s;"></span><span style="position:absolute;content:\'\';height:18px;width:18px;left:'+(m.kcal_tracking?'22px':'3px')+';bottom:3px;background:white;border-radius:50%;transition:.3s;"></span></label></div>';
+                                if (m.kcal_tracking) {
+                                    if (!m.meal_config) m.meal_config = { home_meals: ['Petit-déjeuner','Collation','Déjeuner','Goûter','Dîner'], target_100: true };
+                                    const mc = m.meal_config;
+                                    const allMeals = ['Petit-déjeuner','Collation','Déjeuner','Goûter','Dîner'];
+                                    const mealIcons = {'Petit-déjeuner':'🌅','Collation':'🥜','Déjeuner':'🍽️','Goûter':'🍪','Dîner':'🌙'};
+                                    const homeMeals = mc.home_meals || allMeals;
+                                    const weights = {'Petit-déjeuner':20,'Collation':10,'Déjeuner':30,'Goûter':10,'Dîner':30};
+                                    const homePct = homeMeals.reduce((s,ml) => s + (weights[ml]||0), 0);
+                                    const tdee = calculateKcal(m) || 0;
+                                    const effectiveTarget = parseInt(m.custom_kcal_target) || tdee;
+                                    const dayTarget = mc.target_100 ? effectiveTarget : Math.round(effectiveTarget * homePct / 100);
+                                    const bmiVal = calculateBMI(m);
+                                    const bmiHtml = bmiVal ? '<span style="font-size:0.65rem;padding:0.15rem 0.4rem;border-radius:6px;background:'+(bmiVal<18.5||bmiVal>30?'#FEE2E2':'#E6F2F0')+';color:'+(bmiVal<18.5||bmiVal>30?'#DC2626':'#059669')+';">IMC '+bmiVal+'</span>' : '';
+                                    const valResult = validateKcalTarget(m);
+                                    const valMsg = valResult.msg ? '<div style="margin-bottom:0.4rem;font-size:0.68rem;color:'+(valResult.valid?'#D97706':'#DC2626')+';line-height:1.3;">'+valResult.msg+'</div>' : m.custom_kcal_target ? '<div style="margin-bottom:0.4rem;font-size:0.68rem;color:#059669;">✅ Objectif perso : '+m.custom_kcal_target+' kcal/j</div>' : '';
+                                    const mealBtns = allMeals.map(ml => {
+                                        const ck = homeMeals.includes(ml);
+                                        return '<button onclick="toggleHomeMeal(\''+target+'\',\''+ml+'\')" style="padding:0.25rem 0.5rem;border-radius:6px;border:1.5px solid '+(ck?'var(--teal)':'#E8ECEA')+';background:'+(ck?'#E6F2F0':'white')+';cursor:pointer;font-size:0.62rem;font-weight:'+(ck?'600':'400')+';color:'+(ck?'var(--teal)':'#999')+';font-family:inherit;">'+mealIcons[ml]+' '+ml+(ck?' ✓':'')+'</button>';
+                                    }).join('');
+                                    const summaryText = mc.target_100
+                                        ? '📊 Objectif journalier : <strong>'+effectiveTarget+' kcal</strong> répartis sur '+homeMeals.length+' repas maison ('+homePct+'% des créneaux)'
+                                        : '📊 Objectif journalier : <strong>'+dayTarget+' kcal</strong> ('+homePct+'% du TDEE — repas extérieurs non comptés)';
+                                    html += '<div style="margin-top:0.6rem;padding-top:0.5rem;border-top:1px solid rgba(0,0,0,0.08);">';
+                                    html += '<div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.4rem;"><span style="font-size:0.72rem;color:#555;">TDEE estimé : <strong style="color:var(--teal);">'+tdee+' kcal/j</strong></span> '+bmiHtml+'</div>';
+                                    html += '<div style="display:flex;gap:0.4rem;align-items:center;margin-bottom:0.5rem;"><input type="number" class="input" placeholder="Objectif kcal (vide = auto)" value="'+(m.custom_kcal_target||'')+'" oninput="'+target+'.custom_kcal_target=this.value;render();" style="flex:1;font-size:0.8rem;">';
+                                    if (m.custom_kcal_target) html += '<button onclick="resetKcalTarget(\''+target+'\')" style="background:none;border:none;cursor:pointer;font-size:0.75rem;color:#999;">↺ Auto</button>';
+                                    html += '</div>';
+                                    html += valMsg;
+                                    html += '<div style="font-size:0.72rem;font-weight:600;color:#555;margin-bottom:0.3rem;">🏠 Repas pris à la maison :</div>';
+                                    html += '<div style="display:flex;gap:0.25rem;flex-wrap:wrap;margin-bottom:0.4rem;">'+mealBtns+'</div>';
+                                    html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:0.35rem 0.5rem;background:#F9FAFB;border-radius:6px;margin-bottom:0.3rem;"><span style="font-size:0.65rem;color:#555;">Atteindre 100% du TDEE sur les repas maison ?</span>';
+                                    html += '<label style="position:relative;width:36px;height:18px;flex-shrink:0;"><input type="checkbox" '+(mc.target_100?'checked':'')+' onchange="'+target+'.meal_config.target_100=this.checked;render();" style="opacity:0;width:0;height:0;"><span style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:'+(mc.target_100?'var(--teal)':'#ccc')+';border-radius:18px;transition:.3s;"></span><span style="position:absolute;height:12px;width:12px;left:'+(mc.target_100?'20px':'3px')+';bottom:3px;background:white;border-radius:50%;transition:.3s;"></span></label></div>';
+                                    html += '<div style="font-size:0.6rem;color:#9CA3AF;line-height:1.4;">'+summaryText+'<br>BMR plancher : '+(calculateBMR(m)||'—')+' kcal</div>';
+                                    html += '</div>';
+                                }
+                            }
+                            html += '</div>';
+                            return html;
+                        })()}
                         <div style="display: flex; gap: 0.5rem; margin-top: 0.9rem;">
                             <button class="btn btn-primary" onclick="saveFamilyMember()">${isEdit ? 'Enregistrer' : 'Ajouter'}</button>
                             ${isEdit ? `<button class="btn btn-secondary" onclick="cancelEditMember()">Annuler</button>` : ''}

@@ -910,9 +910,14 @@
             }
         }
         function isPremium() {
-            const p = state.userPlan;
-            if (p.plan === 'premium') return true;
-            if (p.plan === 'trial' && p.trial_end && new Date(p.trial_end) > new Date()) return true;
+            // Check user_plans table
+            const up = state.userPlan;
+            if (up.plan === 'premium') return true;
+            if (up.plan === 'trial' && up.trial_end && new Date(up.trial_end) > new Date()) return true;
+            // Fallback: check profile subscription
+            const p = state.profile;
+            if (p && p.subscription_status === 'active') return true;
+            if (p && p.subscription_status === 'trial' && p.trial_end && new Date(p.trial_end) > new Date()) return true;
             return false;
         }
         function trialDaysLeft() {
@@ -3722,7 +3727,7 @@
                             } else {
                                 const trialBadge = state.userPlan.plan==='trial' ? '<br><span style="font-size:0.6rem;color:#8B5CF6;">✨ Essai Premium — '+trialDaysLeft()+' jours restants</span>' : '';
                                 html += '<div style="display:flex;align-items:center;justify-content:space-between;"><div><span style="font-weight:600;font-size:0.82rem;">🎯 Suivi kcal pour '+(m.name||'ce membre')+'</span><br><span style="font-size:0.68rem;color:#6B7280;">Le générateur ajustera les repas et collations selon l\'objectif calorique</span>'+trialBadge+'</div>';
-                                html += '<label style="position:relative;width:44px;height:24px;flex-shrink:0;"><input type="checkbox" '+(m.kcal_tracking?'checked':'')+' onchange="'+target+'.kcal_tracking=this.checked;render();" style="opacity:0;width:0;height:0;"><span style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:'+(m.kcal_tracking?'var(--teal)':'#ccc')+';border-radius:24px;transition:.3s;"></span><span style="position:absolute;content:\'\';height:18px;width:18px;left:'+(m.kcal_tracking?'22px':'3px')+';bottom:3px;background:white;border-radius:50%;transition:.3s;"></span></label></div>';
+                                html += '<label style="position:relative;width:44px;height:24px;flex-shrink:0;"><input type="checkbox" '+(m.kcal_tracking?'checked':'')+' onchange="'+target+'.kcal_tracking=this.checked;render();" style="opacity:0;width:0;height:0;"><span style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:'+(m.kcal_tracking?'var(--teal)':'#ccc')+';border-radius:24px;transition:.3s;"></span><span style="position:absolute;content:"";height:18px;width:18px;left:'+(m.kcal_tracking?'22px':'3px')+';bottom:3px;background:white;border-radius:50%;transition:.3s;"></span></label></div>';
                                 if (m.kcal_tracking) {
                                     if (!m.meal_config) m.meal_config = { home_meals: ['Petit-déjeuner','Collation','Déjeuner','Goûter','Dîner'], target_100: true };
                                     const mc = m.meal_config;
@@ -3747,7 +3752,7 @@
                                         : '📊 Objectif journalier : <strong>'+dayTarget+' kcal</strong> ('+homePct+'% du TDEE — repas extérieurs non comptés)';
                                     html += '<div style="margin-top:0.6rem;padding-top:0.5rem;border-top:1px solid rgba(0,0,0,0.08);">';
                                     html += '<div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.4rem;"><span style="font-size:0.72rem;color:#555;">TDEE estimé : <strong style="color:var(--teal);">'+tdee+' kcal/j</strong></span> '+bmiHtml+'</div>';
-                                    html += '<div style="display:flex;gap:0.4rem;align-items:center;margin-bottom:0.5rem;"><input type="number" class="input" placeholder="Objectif kcal (vide = auto)" value="'+(m.custom_kcal_target||'')+'" oninput="'+target+'.custom_kcal_target=this.value;render();" style="flex:1;font-size:0.8rem;">';
+                                    html += '<div style="display:flex;gap:0.4rem;align-items:center;margin-bottom:0.5rem;"><input type="number" class="input" placeholder="Objectif kcal (vide = auto)" value="'+(m.custom_kcal_target||'')+'" onchange="'+target+'.custom_kcal_target=this.value;render();" style="flex:1;font-size:0.8rem;">';
                                     if (m.custom_kcal_target) html += '<button onclick="resetKcalTarget(\''+target+'\')" style="background:none;border:none;cursor:pointer;font-size:0.75rem;color:#999;">↺ Auto</button>';
                                     html += '</div>';
                                     html += valMsg;

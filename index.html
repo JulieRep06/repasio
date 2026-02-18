@@ -540,13 +540,13 @@
             newStockItem: { ingredient_id: null, quantity: '', unit: 'g', expiry_date: '' },
             editingStockItem: null,
             ingredientSubTab: 'ingredients',
-            newMember: { name: '', age: '', gender: '', weight: '', height: '', activity: 'Modérée', goal: 'Maintien', kcal_tracking: false, custom_kcal_target: '' },
+            newMember: { name: '', age: '', gender: '', weight: '', height: '', activity: 'Modérée', goal: 'Maintien', kcal_tracking: false, custom_kcal_target: '', meal_config: null },
             newIngredient: { name: '', kcal: '', proteins: '', carbs: '', fats: '', priceKg: '', unit: 'g' },
             newRecipe: { name: '', category: 'Plat principal', meal_role: 'complet', difficulty: 'Facile', preptime: 0, cooktime: 0, servings: 4, instructions: '', ingredients: [] },
             editingMember: null, editingIngredient: null, editingRecipe: null,
             showMealModal: false, currentMealEdit: null,
             searchRecipe: '', searchIngredient: '',
-            toast: null, showUserMenu: false,
+            toast: null, showUserMenu: false, userPlan: { plan: 'free', trial_start: null, trial_end: null },
             resetEmail: '', showResetForm: false, showAuthForm: false, showFeatures: false,
             profile: null, showPremiumModal: false, premiumFeatureClicked: '',
             legalPage: null,
@@ -878,7 +878,7 @@
         // ============================================
         async function loadAllData() {
             if (!state.user?.id) return;
-            await Promise.all([loadProfile(), loadFamilyMembers(), loadIngredients(), loadDietaryOptions(), loadApplianceOptions()]);
+            await Promise.all([loadProfile(), loadUserPlan(), loadFamilyMembers(), loadIngredients(), loadDietaryOptions(), loadApplianceOptions()]);
             loadPreferencesFromProfile();
             await loadRecipes();
             await Promise.all([loadWeeklyMeals(), loadSlotParticipants(), loadStockItems(), loadSiteRecipes(), loadMySubmissions(), loadPdfHistory()]);
@@ -896,6 +896,39 @@
                 }
             }
             state.profile = { subscription_status: 'free', trial_start: null, trial_end: null };
+        }
+
+        async function loadUserPlan() {
+            const { data } = await db.from('user_plans').select('*').eq('user_id', state.user.id).single();
+            if (data) {
+                state.userPlan = data;
+                // Auto-expire trial
+                if (data.plan === 'trial' && data.trial_end && new Date(data.trial_end) < new Date()) {
+                    await db.from('user_plans').update({ plan: 'free' }).eq('user_id', state.user.id);
+                    state.userPlan.plan = 'free';
+                }
+            }
+        }
+        function isPremium() {
+            const p = state.userPlan;
+            if (p.plan === 'premium') return true;
+            if (p.plan === 'trial' && p.trial_end && new Date(p.trial_end) > new Date()) return true;
+            return false;
+        }
+        function trialDaysLeft() {
+            const p = state.userPlan;
+            if (p.plan !== 'trial' || !p.trial_end) return 0;
+            return Math.max(0, Math.ceil((new Date(p.trial_end) - new Date()) / 86400000));
+        }
+        async function startTrial() {
+            const now = new Date();
+            const end = new Date(now.getTime() + 14 * 86400000);
+            const { data, error } = await db.from('user_plans').upsert({
+                user_id: state.user.id, plan: 'trial',
+                trial_start: now.toISOString(), trial_end: end.toISOString()
+            }, { onConflict: 'user_id' }).select().single();
+            if (!error && data) { state.userPlan = data; showToast('🎉 Essai Premium activé pour 14 jours !'); render(); }
+            else { showToast('Erreur: ' + (error?.message || 'Réessayez')); }
         }
 
         async function loadFamilyMembers() {
@@ -1014,14 +1047,19 @@
                 const v = validateKcalTarget(m);
                 if (!v.valid) { showToast(v.msg, 5000); return; }
             }
-            const data = { name: m.name.trim(), age: parseInt(m.age), gender: m.gender, weight: parseFloat(m.weight), height: parseInt(m.height), activity: m.activity || 'Modérée', goal: m.goal || 'Maintien', kcal_tracking: m.kcal_tracking || false, custom_kcal_target: m.custom_kcal_target ? parseInt(m.custom_kcal_target) : null, user_id: state.user?.id };
+            // Guard: no kcal tracking for children
+            if (m.gender === 'Enfant') { m.kcal_tracking = false; m.custom_kcal_target = ''; m.meal_config = null; }
+            // Init default meal_config when enabling kcal_tracking
+            if (m.kcal_tracking && !m.meal_config) { m.meal_config = { home_meals: ['Petit-déjeuner','Collation','Déjeuner','Goûter','Dîner'], target_100: true }; }
+            if (!m.kcal_tracking) { m.meal_config = null; }
+            const data = { name: m.name.trim(), age: parseInt(m.age), gender: m.gender, weight: parseFloat(m.weight), height: parseInt(m.height), activity: m.activity || 'Modérée', goal: m.goal || 'Maintien', kcal_tracking: m.kcal_tracking || false, custom_kcal_target: m.custom_kcal_target ? parseInt(m.custom_kcal_target) : null, meal_config: m.meal_config || null, user_id: state.user?.id };
             try {
                 let error;
                 if (state.editingMember?.id) { ({ error } = await db.from('family_members').update(data).eq('id', state.editingMember.id)); }
                 else { ({ error } = await db.from('family_members').insert([data])); }
                 if (error) throw error;
                 state.editingMember = null;
-                state.newMember = { name: '', age: '', gender: '', weight: '', height: '', activity: 'Modérée', goal: 'Maintien', kcal_tracking: false, custom_kcal_target: '' };
+                state.newMember = { name: '', age: '', gender: '', weight: '', height: '', activity: 'Modérée', goal: 'Maintien', kcal_tracking: false, custom_kcal_target: '', meal_config: null };
                 await loadFamilyMembers(); showToast('Enregistré'); render();
             } catch(e) { console.error('saveFamilyMember error:', e); showToast('Erreur: ' + (e.message || JSON.stringify(e))); }
         }
@@ -1766,6 +1804,76 @@
                     </div>
                 </div>`;
             });
+            
+            // ===== SECTION 2.5: RECAP KCAL PAR MEMBRE =====
+            const trackedMembers = state.familyMembers.filter(fm => fm.kcal_tracking && fm.gender !== 'Enfant');
+            if (trackedMembers.length > 0) {
+                html += `<div style="page-break-before:always;"></div>
+                <div style="text-align:center;margin-bottom:12px;">
+                    <div style="display:inline-block;background:linear-gradient(135deg,#2D6A63,#3D8B7A);color:white;padding:4px 14px;border-radius:20px;font-size:12px;font-weight:700;letter-spacing:0.5px;margin-bottom:8px;">REPASIO</div>
+                    <h1 style="color:#2D6A63;border-bottom:2px solid #2D6A63;padding-bottom:8px;margin:0 0 15px;font-size:18px;">🎯 Suivi Calorique — Récap Semaine</h1>
+                </div>`;
+                
+                trackedMembers.forEach(mem => {
+                    const tdee = calculateKcal(mem) || 0;
+                    const effectiveTarget = parseInt(mem.custom_kcal_target) || tdee;
+                    const mc = mem.meal_config || { home_meals: ['Petit-déjeuner','Collation','Déjeuner','Goûter','Dîner'], target_100: true };
+                    const homeMeals = mc.home_meals || ['Petit-déjeuner','Collation','Déjeuner','Goûter','Dîner'];
+                    const mealWeights = {'Petit-déjeuner':0.20,'Collation':0.10,'Déjeuner':0.30,'Goûter':0.10,'Dîner':0.30};
+                    const homePct = homeMeals.reduce((s,ml) => s + ((mealWeights[ml]||0)*100), 0);
+                    const dayTarget = mc.target_100 ? effectiveTarget : Math.round(effectiveTarget * homePct / 100);
+                    const portion = estimatePortions(mem);
+                    const bmi = calculateBMI(mem);
+                    
+                    html += `<div style="margin-bottom:15px;padding:10px;border:1px solid #E8ECEA;border-radius:8px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                            <div><strong style="font-size:13px;color:#333;">${mem.name}</strong>
+                            <span style="font-size:10px;color:#888;margin-left:6px;">${mem.age} ans • ${mem.gender} • ${mem.weight}kg • ${mem.height}cm</span></div>
+                            <div style="text-align:right;">
+                                <div style="font-size:10px;color:#666;">Objectif : <strong style="color:#2D6A63;">${dayTarget} kcal/j</strong>${mc.target_100?' (100% maison)':' ('+homePct+'%)'}</div>
+                                <div style="font-size:9px;color:#999;">TDEE: ${tdee} kcal • BMR: ${calculateBMR(mem)} kcal${bmi?' • IMC: '+bmi:''} • ${mem.goal}</div>
+                            </div>
+                        </div>
+                        <table style="width:100%;border-collapse:collapse;font-size:9px;">
+                            <tr><th style="background:#2D6A63;color:white;padding:4px;border:1px solid #ddd;font-size:8px;">Repas</th>
+                            ${days.map(d => '<th style="background:#2D6A63;color:white;padding:4px;border:1px solid #ddd;">'+d+'</th>').join('')}
+                            <th style="background:#333;color:white;padding:4px;border:1px solid #ddd;">Moy.</th></tr>`;
+                    
+                    let weekTotal = 0, dayCount = 0;
+                    const mealTypes = [{type:'Petit-déjeuner',l:'Pt-Déj'},{type:'Collation',l:'Collat.'},{type:'Déjeuner',l:'Déj.'},{type:'Goûter',l:'Goûter'},{type:'Dîner',l:'Dîner'}];
+                    const dayTotals = {};
+                    days.forEach(d => { dayTotals[d] = 0; });
+                    
+                    mealTypes.forEach(meal => {
+                        const isHome = homeMeals.includes(meal.type);
+                        html += `<tr style="${!isHome?'color:#bbb;font-style:italic;':''}"><td style="background:#F8FAF9;font-weight:bold;padding:3px;border:1px solid #ddd;">${meal.l}${!isHome?' 🚫':''}</td>`;
+                        days.forEach(d => {
+                            const kcalPP = Math.round(getSlotKcalPerPerson(d, meal.type) * portion);
+                            if (isHome) dayTotals[d] += kcalPP;
+                            html += `<td style="text-align:center;padding:3px;border:1px solid #ddd;${!isHome?'color:#ccc;':''}">${kcalPP > 0 ? kcalPP : '—'}</td>`;
+                        });
+                        html += `<td style="text-align:center;padding:3px;border:1px solid #ddd;color:#888;">—</td></tr>`;
+                    });
+                    
+                    // Total row
+                    html += `<tr style="font-weight:bold;"><td style="background:#E6F2F0;padding:4px;border:1px solid #ddd;color:#2D6A63;">TOTAL</td>`;
+                    days.forEach(d => {
+                        const t = dayTotals[d];
+                        if (t > 0) { weekTotal += t; dayCount++; }
+                        const pct = dayTarget > 0 ? Math.round(t / dayTarget * 100) : 0;
+                        const color = t === 0 ? '#ccc' : pct >= 90 && pct <= 110 ? '#059669' : pct < 90 ? '#DC2626' : '#D97706';
+                        const icon = t === 0 ? '' : pct >= 90 && pct <= 110 ? '✅' : pct < 90 ? '⚠️' : '🔺';
+                        html += `<td style="text-align:center;padding:4px;border:1px solid #ddd;background:#F8FAF9;"><span style="color:${color};font-weight:700;">${t > 0 ? t : '—'}</span>${t > 0 ? '<br><span style="font-size:7px;color:'+color+';">'+icon+' '+pct+'%</span>' : ''}</td>`;
+                    });
+                    const avg = dayCount > 0 ? Math.round(weekTotal / dayCount) : 0;
+                    const avgPct = dayTarget > 0 ? Math.round(avg / dayTarget * 100) : 0;
+                    html += `<td style="text-align:center;padding:4px;border:1px solid #ddd;background:#E6F2F0;"><strong style="color:#2D6A63;">${avg}</strong><br><span style="font-size:7px;color:#2D6A63;">${avgPct}%</span></td></tr>`;
+                    
+                    html += `</table>
+                        <div style="margin-top:6px;font-size:8px;color:#999;">✅ 90-110% de l'objectif • ⚠️ En dessous • 🔺 Au dessus • 🚫 Repas hors maison (non comptés)</div>
+                    </div>`;
+                });
+            }
             
             // ===== SECTION 3: LISTE DE COURSES =====
             const { items } = buildShoppingList();
@@ -3243,7 +3351,7 @@
             state._ob = {
                 step: 0,
                 members: [],
-                currentMember: { name: '', age: '', gender: '', weight: '', height: '', activity: 'Modérée', goal: 'Maintien', kcal_tracking: false, custom_kcal_target: '' },
+                currentMember: { name: '', age: '', gender: '', weight: '', height: '', activity: 'Modérée', goal: 'Maintien', kcal_tracking: false, custom_kcal_target: '', meal_config: null },
                 addingMore: false,
                 dietary: [],
                 allergies: [],
@@ -3311,6 +3419,11 @@
                         <div style="display:flex;gap:0.3rem;">
                             ${[{k:'Perte',icon:'📉',l:'Perte de poids'},{k:'Maintien',icon:'⚖️',l:'Maintien'},{k:'Prise',icon:'💪',l:'Prise de masse'}].map(g => `<button onclick="state._ob.currentMember.goal='${g.k}';render();" style="flex:1;padding:0.45rem 0.2rem;border-radius:8px;border:1.5px solid ${m.goal===g.k?'var(--teal)':'#E8ECEA'};background:${m.goal===g.k?'#E6F2F0':'white'};cursor:pointer;font-size:0.65rem;font-weight:${m.goal===g.k?'600':'400'};color:${m.goal===g.k?'var(--teal)':'#888'};font-family:inherit;text-align:center;">${g.icon}<br>${g.l}</button>`).join('')}
                         </div>
+                        ${m.gender !== 'Enfant' ? `
+                        <div style="margin-top:0.3rem;padding:0.5rem 0.7rem;background:linear-gradient(135deg,#F0E6F6,#E6F2F0);border-radius:8px;display:flex;align-items:center;justify-content:space-between;">
+                            <div><span style="font-size:0.72rem;font-weight:600;">🎯 Suivi kcal pour ${m.name||'ce membre'}</span><br><span style="font-size:0.6rem;color:#6B7280;">Ajuste automatiquement les repas selon l'objectif calorique (Premium)</span></div>
+                            <label style="position:relative;width:38px;height:20px;flex-shrink:0;"><input type="checkbox" ${m.kcal_tracking?'checked':''} onchange="state._ob.currentMember.kcal_tracking=this.checked;render();" style="opacity:0;width:0;height:0;"><span style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:${m.kcal_tracking?'var(--teal)':'#ccc'};border-radius:20px;transition:.3s;"></span><span style="position:absolute;content:'';height:14px;width:14px;left:${m.kcal_tracking?'20px':'3px'};bottom:3px;background:white;border-radius:50%;transition:.3s;"></span></label>
+                        </div>` : ''}
                         <button class="btn btn-primary" style="width:100%;justify-content:center;padding:0.65rem;border-radius:12px;" onclick="obAddMember();">
                             ${ob.members.length === 0 ? 'Valider et continuer →' : 'Ajouter ce membre →'}
                         </button>
@@ -3470,7 +3583,9 @@
             if (!m.age) { showToast('Entre l\'âge'); return; }
             if (!m.gender) { showToast('Sélectionne le genre'); return; }
             state._ob.members.push({ ...m });
-            state._ob.currentMember = { name: '', age: '', gender: '', weight: '', height: '', activity: 'Modérée', goal: 'Maintien', kcal_tracking: false, custom_kcal_target: '' };
+            // Guard: no kcal tracking for children
+            if (m.gender === 'Enfant') { state._ob.members[state._ob.members.length-1].kcal_tracking = false; }
+            state._ob.currentMember = { name: '', age: '', gender: '', weight: '', height: '', activity: 'Modérée', goal: 'Maintien', kcal_tracking: false, custom_kcal_target: '', meal_config: null };
             render();
         }
 
@@ -3485,7 +3600,8 @@
                         user_id: state.user.id, name: m.name, age: parseInt(m.age),
                         gender: m.gender, weight: parseFloat(m.weight) || null,
                         height: parseFloat(m.height) || null, activity: m.activity, goal: m.goal,
-                        kcal_tracking: m.kcal_tracking || false
+                        kcal_tracking: m.kcal_tracking || false,
+                        meal_config: m.kcal_tracking ? (m.meal_config || { home_meals: ['Petit-déjeuner','Collation','Déjeuner','Goûter','Dîner'], target_100: true }) : null
                     }]).select();
                     if (error) console.error('member insert error:', error);
                 }
@@ -3575,25 +3691,72 @@
                             <div><label class="label">Activité</label><select class="select" onchange="${target}.activity=this.value">${['Sédentaire','Légère','Modérée','Active','Très active'].map(a => `<option ${m.activity===a?'selected':''}>${a}</option>`).join('')}</select></div>
                             <div><label class="label">Objectif</label><select class="select" onchange="${target}.goal=this.value;render()"><option ${(m.goal||'Maintien')==='Maintien'?'selected':''}>Maintien</option><option value="Perte" ${m.goal==='Perte'?'selected':''}>📉 Perte de poids</option><option value="Prise" ${m.goal==='Prise'?'selected':''}>💪 Prise de masse</option></select></div>
                         </div>
+                        ${(()=>{
+                            const bmi = calculateBMI(m);
+                            const goal = (m.goal||'Maintien');
+                            if (bmi && bmi < 18.5 && goal === 'Perte') return '<div style="margin-top:0.5rem;padding:0.5rem 0.7rem;background:#FEE2E2;border-radius:8px;font-size:0.72rem;color:#DC2626;line-height:1.4;">⛔ <strong>Attention :</strong> IMC de '+bmi+' (insuffisance pondérale). L\'objectif Perte de poids n\'est pas recommandé. Passez en Maintien ou consultez un professionnel.</div>';
+                            if (bmi && bmi > 30 && goal === 'Prise') return '<div style="margin-top:0.5rem;padding:0.5rem 0.7rem;background:#FEF3C7;border-radius:8px;font-size:0.72rem;color:#D97706;line-height:1.4;">⚠️ <strong>Attention :</strong> IMC de '+bmi+' (obésité). L\'objectif Prise de masse est à valider avec un professionnel.</div>';
+                            return '';
+                        })()}
+                        ${m.gender === 'Enfant' ? `
+                        <div style="margin-top: 0.7rem; padding: 0.6rem 0.8rem; background: #F3F4F6; border-radius: 10px;">
+                            <span style="font-size: 0.75rem; color: #6B7280;">👶 Le suivi calorique précis n'est pas disponible pour les enfants. Les repas sont adaptés automatiquement via les portions.</span>
+                        </div>` : `
                         <div style="margin-top: 0.7rem; padding: 0.6rem 0.8rem; background: linear-gradient(135deg, #F0E6F6, #E6F2F0); border-radius: 10px;">
+                            ${!isPremium() ? `
                             <div style="display: flex; align-items: center; justify-content: space-between;">
-                                <div><span style="font-weight: 600; font-size: 0.82rem;">🎯 Suivi kcal personnalisé</span><br><span style="font-size: 0.68rem; color: #6B7280;">Le générateur ajustera les repas et collations selon l'objectif calorique</span></div>
+                                <div><span style="font-weight: 600; font-size: 0.82rem;">🔒 Suivi kcal pour ${m.name||'ce membre'}</span><br><span style="font-size: 0.68rem; color: #6B7280;">Fonctionnalité Premium — Le générateur ajuste repas et collations selon l'objectif calorique</span></div>
+                            </div>
+                            <button onclick="startTrial()" style="margin-top:0.5rem;width:100%;padding:0.55rem;border:none;border-radius:8px;background:linear-gradient(135deg,#8B5CF6,#6D28D9);color:white;font-weight:600;font-size:0.78rem;cursor:pointer;font-family:inherit;">✨ Essai gratuit 14 jours — sans carte bancaire</button>
+                            ` : `
+                            <div style="display: flex; align-items: center; justify-content: space-between;">
+                                <div><span style="font-weight: 600; font-size: 0.82rem;">🎯 Suivi kcal pour ${m.name||'ce membre'}</span><br><span style="font-size: 0.68rem; color: #6B7280;">Le générateur ajustera les repas et collations selon l'objectif calorique</span>
+                                ${state.userPlan.plan==='trial' ? '<br><span style="font-size:0.6rem;color:#8B5CF6;">✨ Essai Premium — '+trialDaysLeft()+' jours restants</span>' : ''}</div>
                                 <label style="position:relative;width:44px;height:24px;flex-shrink:0;"><input type="checkbox" ${m.kcal_tracking?'checked':''} onchange="${target}.kcal_tracking=this.checked;render();" style="opacity:0;width:0;height:0;"><span style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:${m.kcal_tracking?'var(--teal)':'#ccc'};border-radius:24px;transition:.3s;"></span><span style="position:absolute;content:'';height:18px;width:18px;left:${m.kcal_tracking?'22px':'3px'};bottom:3px;background:white;border-radius:50%;transition:.3s;"></span></label>
                             </div>
-                            ${m.kcal_tracking ? `
+                            ${m.kcal_tracking ? (()=>{
+                                if (!m.meal_config) { m.meal_config = { home_meals: ['Petit-déjeuner','Collation','Déjeuner','Goûter','Dîner'], target_100: true }; }
+                                const mc = m.meal_config;
+                                const allMeals = ['Petit-déjeuner','Collation','Déjeuner','Goûter','Dîner'];
+                                const mealIcons = {'Petit-déjeuner':'🌅','Collation':'🥜','Déjeuner':'🍽️','Goûter':'🍪','Dîner':'🌙'};
+                                const homeMeals = mc.home_meals || allMeals;
+                                const weights = {'Petit-déjeuner':20,'Collation':10,'Déjeuner':30,'Goûter':10,'Dîner':30};
+                                const homePct = homeMeals.reduce((s,ml) => s + (weights[ml]||0), 0);
+                                const tdee = calculateKcal(m) || 0;
+                                const effectiveTarget = parseInt(m.custom_kcal_target) || tdee;
+                                const dayTarget = mc.target_100 ? effectiveTarget : Math.round(effectiveTarget * homePct / 100);
+                                return `
                             <div style="margin-top: 0.6rem; padding-top: 0.5rem; border-top: 1px solid rgba(0,0,0,0.08);">
                                 <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.4rem;">
-                                    <span style="font-size: 0.72rem; color: #555;">TDEE estimé : <strong style="color: var(--teal);">${calculateKcal(m) || '—'} kcal/j</strong></span>
-                                    ${calculateBMI(m) ? `<span style="font-size: 0.65rem; padding: 0.15rem 0.4rem; border-radius: 6px; background: ${calculateBMI(m)<18.5?'#FEE2E2':calculateBMI(m)>30?'#FEE2E2':'#E6F2F0'}; color: ${calculateBMI(m)<18.5||calculateBMI(m)>30?'#DC2626':'#059669'};">IMC ${calculateBMI(m)}</span>` : ''}
+                                    <span style="font-size: 0.72rem; color: #555;">TDEE estimé : <strong style="color: var(--teal);">${tdee} kcal/j</strong></span>
+                                    ${calculateBMI(m) ? '<span style="font-size: 0.65rem; padding: 0.15rem 0.4rem; border-radius: 6px; background: '+(calculateBMI(m)<18.5?'#FEE2E2':calculateBMI(m)>30?'#FEE2E2':'#E6F2F0')+'; color: '+(calculateBMI(m)<18.5||calculateBMI(m)>30?'#DC2626':'#059669')+';">IMC '+calculateBMI(m)+'</span>' : ''}
                                 </div>
-                                <div style="display: flex; gap: 0.4rem; align-items: center;">
+                                <div style="display: flex; gap: 0.4rem; align-items: center; margin-bottom: 0.5rem;">
                                     <input type="number" class="input" placeholder="Objectif kcal (vide = auto)" value="${m.custom_kcal_target||''}" oninput="${target}.custom_kcal_target=this.value;render();" style="flex:1; font-size: 0.8rem;">
-                                    ${m.custom_kcal_target ? `<button onclick="${target}.custom_kcal_target='';render();" style="background:none;border:none;cursor:pointer;font-size:0.75rem;color:#999;" title="Réinitialiser vers TDEE auto">↺ Auto</button>` : ''}
+                                    ${m.custom_kcal_target ? '<button onclick="'+target+'.custom_kcal_target=\\'\\';render();" style="background:none;border:none;cursor:pointer;font-size:0.75rem;color:#999;">↺ Auto</button>' : ''}
                                 </div>
-                                ${(()=>{ const v = validateKcalTarget(m); return v.msg ? `<div style="margin-top:0.3rem;font-size:0.68rem;color:${v.valid?'#D97706':'#DC2626'};line-height:1.3;">${v.msg}</div>` : m.custom_kcal_target ? `<div style="margin-top:0.3rem;font-size:0.68rem;color:#059669;">✅ Objectif personnalisé : ${m.custom_kcal_target} kcal/j</div>` : ''; })()}
-                                <div style="margin-top: 0.3rem; font-size: 0.62rem; color: #9CA3AF;">Vide = TDEE calculé automatiquement (${calculateKcal(m) || '—'} kcal). BMR plancher : ${calculateBMR(m) || '—'} kcal.</div>
-                            </div>` : ''}
-                        </div>
+                                ${(()=>{ const v = validateKcalTarget(m); return v.msg ? '<div style="margin-bottom:0.4rem;font-size:0.68rem;color:'+(v.valid?'#D97706':'#DC2626')+';line-height:1.3;">'+v.msg+'</div>' : m.custom_kcal_target ? '<div style="margin-bottom:0.4rem;font-size:0.68rem;color:#059669;">✅ Objectif perso : '+m.custom_kcal_target+' kcal/j</div>' : ''; })()}
+                                <div style="font-size:0.72rem;font-weight:600;color:#555;margin-bottom:0.3rem;">🏠 Repas pris à la maison :</div>
+                                <div style="display:flex;gap:0.25rem;flex-wrap:wrap;margin-bottom:0.4rem;">
+                                    ${allMeals.map(ml => {
+                                        const checked = homeMeals.includes(ml);
+                                        return '<button onclick="const mc='+target+'.meal_config;const hm=mc.home_meals;const i=hm.indexOf(\\''+ml+'\\');if(i>=0)hm.splice(i,1);else hm.push(\\''+ml+'\\');render();" style="padding:0.25rem 0.5rem;border-radius:6px;border:1.5px solid '+(checked?'var(--teal)':'#E8ECEA')+';background:'+(checked?'#E6F2F0':'white')+';cursor:pointer;font-size:0.62rem;font-weight:'+(checked?'600':'400')+';color:'+(checked?'var(--teal)':'#999')+';font-family:inherit;">'+mealIcons[ml]+' '+ml+(checked?' ✓':'')+'</button>';
+                                    }).join('')}
+                                </div>
+                                <div style="display:flex;align-items:center;justify-content:space-between;padding:0.35rem 0.5rem;background:#F9FAFB;border-radius:6px;margin-bottom:0.3rem;">
+                                    <span style="font-size:0.65rem;color:#555;">Atteindre 100% du TDEE sur les repas maison ?</span>
+                                    <label style="position:relative;width:36px;height:18px;flex-shrink:0;"><input type="checkbox" ${mc.target_100?'checked':''} onchange="${target}.meal_config.target_100=this.checked;render();" style="opacity:0;width:0;height:0;"><span style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:${mc.target_100?'var(--teal)':'#ccc'};border-radius:18px;transition:.3s;"></span><span style="position:absolute;height:12px;width:12px;left:${mc.target_100?'20px':'3px'};bottom:3px;background:white;border-radius:50%;transition:.3s;"></span></label>
+                                </div>
+                                <div style="font-size:0.6rem;color:#9CA3AF;line-height:1.4;">
+                                    ${mc.target_100 
+                                        ? '📊 Objectif journalier : <strong>'+effectiveTarget+' kcal</strong> répartis sur '+homeMeals.length+' repas maison ('+homePct+'% des créneaux)'
+                                        : '📊 Objectif journalier : <strong>'+dayTarget+' kcal</strong> ('+homePct+'% du TDEE — repas extérieurs non comptés)'}
+                                    <br>BMR plancher : ${calculateBMR(m) || '—'} kcal
+                                </div>
+                            </div>`; })()
+                            ` : ''}
+                            `}
+                        </div>`}
                         <div style="display: flex; gap: 0.5rem; margin-top: 0.9rem;">
                             <button class="btn btn-primary" onclick="saveFamilyMember()">${isEdit ? 'Enregistrer' : 'Ajouter'}</button>
                             ${isEdit ? `<button class="btn btn-secondary" onclick="cancelEditMember()">Annuler</button>` : ''}

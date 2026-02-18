@@ -1035,7 +1035,7 @@
         // Family CRUD
         // ============================================
         async function saveFamilyMember() {
-            if (!await checkSession()) return;
+            if (!await checkSession()) { console.error('checkSession failed'); return; }
             const m = state.editingMember || state.newMember;
             if (!m.name.trim()) { showToast('Entrez un prénom'); return; }
             if (!m.age) { showToast('Entrez l\'âge'); return; }
@@ -1053,6 +1053,7 @@
             if (m.kcal_tracking && !m.meal_config) { m.meal_config = { home_meals: ['Petit-déjeuner','Collation','Déjeuner','Goûter','Dîner'], target_100: true }; }
             if (!m.kcal_tracking) { m.meal_config = null; }
             const data = { name: m.name.trim(), age: parseInt(m.age), gender: m.gender, weight: parseFloat(m.weight), height: parseInt(m.height), activity: m.activity || 'Modérée', goal: m.goal || 'Maintien', kcal_tracking: m.kcal_tracking || false, custom_kcal_target: m.custom_kcal_target ? parseInt(m.custom_kcal_target) : null, meal_config: m.meal_config || null, user_id: state.user?.id };
+            console.log('[saveFamilyMember]', data);
             try {
                 let error;
                 if (state.editingMember?.id) { ({ error } = await db.from('family_members').update(data).eq('id', state.editingMember.id)); }
@@ -1075,7 +1076,7 @@
             const i = state.editingIngredient || state.newIngredient;
             if (!i.name.trim()) { showToast('Entrez un nom'); return; }
             const priceKg = parseFloat(i.priceKg) || 0;
-            const data = { name: i.name.trim(), kcal: parseFloat(i.kcal) || 0, proteins: parseFloat(i.proteins) || 0, carbs: parseFloat(i.carbs) || 0, fats: parseFloat(i.fats) || 0, price: priceKg / 10, user_id: state.user?.id };
+            const data = { name: i.name.trim(), kcal: parseFloat(i.kcal) || 0, proteins: parseFloat(i.proteins) || 0, carbs: parseFloat(i.carbs) || 0, fats: parseFloat(i.fats) || 0, price: priceKg, user_id: state.user?.id };
             if (state.editingIngredient?.id) { 
                 const { error } = await db.from('ingredients').update(data).eq('id', state.editingIngredient.id);
                 if (error) { showToast('Erreur: ' + error.message); return; }
@@ -1091,7 +1092,7 @@
             await loadIngredients(); showToast('Enregistré'); render();
         }
         async function deleteIngredient(id) { if (!confirm('Supprimer ?')) return; await db.from('ingredients').delete().eq('id', id); await loadIngredients(); render(); }
-        function editIngredient(ing) { state.editingIngredient = { ...ing, priceKg: ((ing.price || 0) * 10).toFixed(2) }; render(); }
+        function editIngredient(ing) { state.editingIngredient = { ...ing, priceKg: (ing.price || 0).toFixed(2) }; render(); }
         function cancelEditIngredient() { state.editingIngredient = null; render(); }
 
         // ============================================
@@ -1640,7 +1641,7 @@
             return (q % 1 === 0 ? q : q.toFixed(1)) + ' ' + unit;
         }
 
-        function getRecipeCost(recipe) { return (recipe?.ingredients || []).reduce((s, i) => s + ((i.price || 0) * toGrams(i.quantity, i.unit) / 100), 0); }
+        function getRecipeCost(recipe) { return (recipe?.ingredients || []).reduce((s, i) => s + ((i.price || 0) * toGrams(i.quantity, i.unit) / 1000), 0); }
         function getRecipeCostPerPortion(recipe) { return getRecipeCost(recipe) / (recipe.servings || 1); }
         function getSlotTotalPortions(day, mealType) {
             const parts = getParticipantsForSlot(day, mealType);
@@ -1728,7 +1729,7 @@
                 const totalStockConverted = stocks.reduce((s, x) => s + convertStockToUnit(x.quantity || 0, x.unit, i.unit), 0);
                 const needed = Math.max(0, i.quantity - totalStockConverted);
                 const fullyInStock = totalStockConverted >= i.quantity;
-                return { ...i, totalCost: toGrams(i.quantity, i.unit) / 100 * i.price, stockQty: totalStockConverted, needed, fullyInStock, toBuyCost: toGrams(needed, i.unit) / 100 * i.price };
+                return { ...i, totalCost: toGrams(i.quantity, i.unit) / 1000 * i.price, stockQty: totalStockConverted, needed, fullyInStock, toBuyCost: toGrams(needed, i.unit) / 1000 * i.price };
             }).sort((a, b) => a.fullyInStock !== b.fullyInStock ? (a.fullyInStock ? 1 : -1) : a.name.localeCompare(b.name)), details: recipeDetails };
         }
 
@@ -2568,7 +2569,7 @@
                 ` : `
                 <div class="card-header">
                     <div><h2 style="font-size: 1.1rem; font-weight: 700; margin: 0;">📅 Planning Hebdomadaire</h2>
-                    <p style="font-size: 0.72rem; color: #6B7280; margin: 0.15rem 0 0;">${state.weeklyMeals.length} repas • Budget: <span style="color: var(--teal); font-weight: 600;">${wt.toFixed(2)}€</span></p></div>
+                    <p style="font-size: 0.72rem; color: #6B7280; margin: 0.15rem 0 0;">${state.weeklyMeals.length} repas • Budget: <span style="color: var(--teal); font-weight: 600;">${wt.toFixed(2)}€</span>${(()=>{ const tracked = state.familyMembers.filter(f => f.kcal_tracking && f.gender !== 'Enfant'); return tracked.length ? ' • <span style="color:#8B5CF6;font-weight:600;">🎯 Suivi kcal: '+tracked.map(f=>f.name).join(', ')+'</span>' : ''; })()}</p></div>
                     <div style="display: flex; gap: 0.3rem; flex-wrap: wrap;" class="planning-actions">
                         ${state._planningValidated ? `
                             <button class="btn btn-primary btn-sm" onclick="downloadAllInOnePDF()">📥 PDF</button>
@@ -2761,7 +2762,7 @@
                     return { ...ri, ingredient_name: ing?.name || '', kcal: ing?.kcal || 0, proteins: ing?.proteins || 0, carbs: ing?.carbs || 0, fats: ing?.fats || 0, price: ing?.price || 0 };
                 });
                 const tk = ings.reduce((s,i) => s + ((i.kcal||0)*toGrams(i.quantity,i.unit)/100), 0);
-                allRecipes.push({ ...sr, ingredients: ings, _source: 'site', _kcalPer: Math.round(tk/(sr.servings||4)), _cost: ings.reduce((s,i)=>s+((i.price||0)*toGrams(i.quantity,i.unit)/100),0)/(sr.servings||4) });
+                allRecipes.push({ ...sr, ingredients: ings, _source: 'site', _kcalPer: Math.round(tk/(sr.servings||4)), _cost: ings.reduce((s,i)=>s+((i.price||0)*toGrams(i.quantity,i.unit)/1000),0)/(sr.servings||4) });
             });
 
             const filtered = allRecipes.filter(rec => 
@@ -2996,7 +2997,7 @@
                     return `<div class="ingredient-card">
                         <div class="ic-name">${ing.name} ${isSite ? '<span style="background:#E6F2F0;color:var(--teal);padding:1px 5px;border-radius:3px;font-size:0.52rem;font-weight:600;">Base</span>' : ''}</div>
                         <div class="ic-meta">${ing.kcal} kcal • P:${ing.proteins}g • G:${ing.carbs}g • L:${ing.fats}g</div>
-                        <div class="ic-meta">💰 ${((ing.price||0)*10).toFixed(2)}€/kg</div>
+                        <div class="ic-meta">💰 ${(ing.price||0).toFixed(2)}€/kg</div>
                         ${!isSite ? `<div class="ic-actions">
                             <button class="btn btn-edit btn-sm" style="padding:2px 5px;" onclick='editIngredient(${JSON.stringify(ing).replace(/'/g, "\\'")})'>✏️</button>
                             <button class="btn btn-delete btn-sm" style="padding:2px 5px;" onclick="deleteIngredient(${ing.id})">🗑️</button>

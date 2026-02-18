@@ -490,6 +490,18 @@
         .loading-spinner { width: 40px; height: 40px; border: 3px solid #E8ECEA; border-top-color: var(--teal); border-radius: 50%; animation: spin 1s linear infinite; }
         
         @media print { .no-print { display: none !important; } }
+        
+        /* Cookie banner */
+        .cookie-banner { position: fixed; bottom: 0; left: 0; right: 0; background: white; box-shadow: 0 -4px 20px rgba(0,0,0,0.15); z-index: 9998; padding: 1rem 1.5rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; font-size: 0.82rem; line-height: 1.5; }
+        .cookie-banner p { margin: 0; color: #444; flex: 1; min-width: 200px; }
+        .cookie-banner a { color: var(--teal); text-decoration: underline; cursor: pointer; }
+        .cookie-btns { display: flex; gap: 0.5rem; flex-shrink: 0; }
+        .cookie-btns button { padding: 0.5rem 1rem; border-radius: 8px; font-weight: 600; font-size: 0.78rem; cursor: pointer; border: none; font-family: inherit; }
+        .cookie-accept { background: var(--teal); color: white; }
+        .cookie-accept:hover { background: var(--teal-dark); }
+        .cookie-reject { background: #EAEDEC; color: var(--charcoal); }
+        .cookie-reject:hover { background: #D5DAD8; }
+        @media (max-width: 768px) { .cookie-banner { flex-direction: column; text-align: center; padding: 0.8rem; padding-bottom: calc(0.8rem + env(safe-area-inset-bottom)); } .cookie-btns { width: 100%; justify-content: center; } }
     </style>
 </head>
 <body>
@@ -529,7 +541,7 @@
             ingredientSubTab: 'ingredients',
             newMember: { name: '', age: '', gender: '', weight: '', height: '', activity: 'Modérée', goal: 'Maintien' },
             newIngredient: { name: '', kcal: '', proteins: '', carbs: '', fats: '', priceKg: '', unit: 'g' },
-            newRecipe: { name: '', category: 'Plat principal', difficulty: 'Facile', preptime: 0, cooktime: 0, servings: 4, instructions: '', ingredients: [] },
+            newRecipe: { name: '', category: 'Plat principal', meal_role: 'complet', difficulty: 'Facile', preptime: 0, cooktime: 0, servings: 4, instructions: '', ingredients: [] },
             editingMember: null, editingIngredient: null, editingRecipe: null,
             showMealModal: false, currentMealEdit: null,
             searchRecipe: '', searchIngredient: '',
@@ -1094,7 +1106,7 @@
             const r = state.editingRecipe || state.newRecipe;
             if (!r.name.trim()) { showToast('Entrez un nom'); return; }
             if (!r.ingredients || r.ingredients.filter(i => i.ingredient_id).length === 0) { showToast('Ajoutez au moins un ingrédient'); return; }
-            const data = { name: r.name.trim(), category: r.category, difficulty: r.difficulty, preptime: parseInt(r.preptime) || 0, cooktime: parseInt(r.cooktime) || 0, servings: parseInt(r.servings) || 4, instructions: r.instructions || '', dietary_info: r.dietary_info || [], appliance: r.appliance || null, user_id: state.user?.id };
+            const data = { name: r.name.trim(), category: r.category, meal_role: r.meal_role || 'complet', difficulty: r.difficulty, preptime: parseInt(r.preptime) || 0, cooktime: parseInt(r.cooktime) || 0, servings: parseInt(r.servings) || 4, instructions: r.instructions || '', dietary_info: r.dietary_info || [], appliance: r.appliance || null, user_id: state.user?.id };
             let recipeId;
             try {
                 if (state.editingRecipe?.id) {
@@ -1111,7 +1123,7 @@
                     if (ing.ingredient_id) await db.from('recipe_ingredients').insert([{ recipe_id: recipeId, ingredient_id: ing.ingredient_id, quantity: parseFloat(ing.quantity) || 0, unit: ing.unit || 'g' }]);
                 }
                 state.editingRecipe = null;
-                state.newRecipe = { name: '', category: 'Plat principal', difficulty: 'Facile', preptime: 0, cooktime: 0, servings: 4, instructions: '', ingredients: [], dietary_info: [], appliance: '' };
+                state.newRecipe = { name: '', category: 'Plat principal', meal_role: 'complet', difficulty: 'Facile', preptime: 0, cooktime: 0, servings: 4, instructions: '', ingredients: [], dietary_info: [], appliance: '' };
                 await loadRecipes(); showToast('Recette enregistrée'); render();
             } catch(e) { showToast('Erreur: ' + (e.message || e)); }
         }
@@ -2665,6 +2677,7 @@
                         <div class="form-grid" style="margin-bottom: 0.8rem;">
                             <div><label class="label">Nom</label><input class="input" value="${r.name}" oninput="${target}.name=this.value"></div>
                             <div><label class="label">Catégorie</label><select class="select" onchange="${target}.category=this.value">${['Entrée','Plat principal','Dessert','Accompagnement','Petit-déjeuner','Goûter'].map(c => `<option ${r.category===c?'selected':''}>${c}</option>`).join('')}</select></div>
+                            <div><label class="label">Rôle au repas</label><select class="select" onchange="${target}.meal_role=this.value">${[{v:'complet',l:'🍽️ Plat complet'},{v:'principal',l:'🍗 Principal (protéine)'},{v:'accompagnement',l:'🥗 Accompagnement'},{v:'entree',l:'🥣 Entrée'},{v:'dessert',l:'🍰 Dessert'}].map(o => `<option value="${o.v}" ${(r.meal_role||'complet')===o.v?'selected':''}>${o.l}</option>`).join('')}</select></div>
                             <div><label class="label">Difficulté</label><select class="select" onchange="${target}.difficulty=this.value">${['Facile','Moyen','Difficile'].map(d => `<option ${r.difficulty===d?'selected':''}>${d}</option>`).join('')}</select></div>
                         </div>
                         <div class="form-grid" style="margin-bottom: 0.8rem;">
@@ -2725,7 +2738,7 @@
                             <div class="rc-cat">${rec.category || 'Plat'}</div>
                             <div class="rc-name">${rec.name}</div>
                             <div style="display:flex;gap:0.3rem;margin-bottom:0.2rem;">${badge}</div>
-                            <div class="rc-meta">⏱ ${(rec.preptime||0)+(rec.cooktime||0)}min • 👤 ${rec.servings||4} pers.</div>
+                            <div class="rc-meta">⏱ ${(rec.preptime||0)+(rec.cooktime||0)}min • 👤 ${rec.servings||4} pers.${rec.meal_role && rec.meal_role !== 'complet' ? ' • '+({principal:'🍗 Principal',accompagnement:'🥗 Accomp.',entree:'🥣 Entrée',dessert:'🍰 Dessert'}[rec.meal_role]||'') : ''}</div>
                             <div class="rc-meta">🔥 ${rec._kcalPer} kcal${rec._cost > 0 ? ' • 💰 ' + rec._cost.toFixed(2) + '€/pers' : ''}</div>
                             ${dietary ? `<div class="rc-tags">${dietary}</div>` : ''}
                             ${stars}
@@ -3541,7 +3554,26 @@
             </div>`;
         }
 
-        document.addEventListener('DOMContentLoaded', initApp);
+        // ============================================
+        // Cookie consent (RGPD)
+        // ============================================
+        function getCookieConsent() { try { return localStorage.getItem('repasio_cookie_consent'); } catch(e) { return null; } }
+        function setCookieConsent(value) { try { localStorage.setItem('repasio_cookie_consent', value); } catch(e) {} hideCookieBanner(); }
+        function hideCookieBanner() { const b = document.getElementById('cookie-banner'); if (b) b.style.display = 'none'; }
+        function showCookieBanner() {
+            if (getCookieConsent()) return;
+            const b = document.createElement('div');
+            b.id = 'cookie-banner';
+            b.className = 'cookie-banner';
+            b.innerHTML = `<p>🍪 Repasio utilise des cookies essentiels pour le fonctionnement de l'application (authentification, préférences). Aucun cookie publicitaire n'est utilisé. <a onclick="showLegalPage('confidentialite')">En savoir plus</a></p>
+                <div class="cookie-btns">
+                    <button class="cookie-reject" onclick="setCookieConsent('rejected')">Refuser</button>
+                    <button class="cookie-accept" onclick="setCookieConsent('accepted')">Accepter</button>
+                </div>`;
+            document.body.appendChild(b);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => { initApp(); setTimeout(showCookieBanner, 1500); });
         document.addEventListener('click', (e) => { if (!e.target.closest('.user-menu') && state.showUserMenu) { state.showUserMenu = false; render(); } });
         
     </script>

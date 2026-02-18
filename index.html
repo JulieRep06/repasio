@@ -540,7 +540,7 @@
             newStockItem: { ingredient_id: null, quantity: '', unit: 'g', expiry_date: '' },
             editingStockItem: null,
             ingredientSubTab: 'ingredients',
-            newMember: { name: '', age: '', gender: '', weight: '', height: '', activity: 'Modérée', goal: 'Maintien', kcal_tracking: false, custom_kcal_target: '', meal_config: null },
+            newMember: { name: '', age: '', gender: '', weight: '', height: '', activity: 'Modérée', goal: 'Maintien', kcal_tracking: false, custom_kcal_target: '', meal_config: null, glycemic_control: null },
             newIngredient: { name: '', kcal: '', proteins: '', carbs: '', fats: '', priceKg: '', unit: 'g' },
             newRecipe: { name: '', category: 'Plat principal', meal_role: 'complet', difficulty: 'Facile', preptime: 0, cooktime: 0, servings: 4, instructions: '', ingredients: [] },
             editingMember: null, editingIngredient: null, editingRecipe: null,
@@ -1057,7 +1057,7 @@
             // Init default meal_config when enabling kcal_tracking
             if (m.kcal_tracking && !m.meal_config) { m.meal_config = { home_meals: ['Petit-déjeuner','Collation','Déjeuner','Goûter','Dîner'], target_100: true }; }
             if (!m.kcal_tracking) { m.meal_config = null; }
-            const data = { name: m.name.trim(), age: parseInt(m.age), gender: m.gender, weight: parseFloat(m.weight), height: parseInt(m.height), activity: m.activity || 'Modérée', goal: m.goal || 'Maintien', kcal_tracking: m.kcal_tracking || false, custom_kcal_target: m.custom_kcal_target ? parseInt(m.custom_kcal_target) : null, meal_config: m.meal_config || null, user_id: state.user?.id };
+            const data = { name: m.name.trim(), age: parseInt(m.age), gender: m.gender, weight: parseFloat(m.weight), height: parseInt(m.height), activity: m.activity || 'Modérée', goal: m.goal || 'Maintien', kcal_tracking: m.kcal_tracking || false, custom_kcal_target: m.custom_kcal_target ? parseInt(m.custom_kcal_target) : null, meal_config: m.meal_config || null, glycemic_control: m.glycemic_control || null, user_id: state.user?.id };
             console.log('[saveFamilyMember]', data);
             try {
                 let error;
@@ -1065,7 +1065,7 @@
                 else { ({ error } = await db.from('family_members').insert([data])); }
                 if (error) throw error;
                 state.editingMember = null;
-                state.newMember = { name: '', age: '', gender: '', weight: '', height: '', activity: 'Modérée', goal: 'Maintien', kcal_tracking: false, custom_kcal_target: '', meal_config: null };
+                state.newMember = { name: '', age: '', gender: '', weight: '', height: '', activity: 'Modérée', goal: 'Maintien', kcal_tracking: false, custom_kcal_target: '', meal_config: null, glycemic_control: null };
                 await loadFamilyMembers(); showToast('Enregistré'); render();
             } catch(e) { console.error('saveFamilyMember error:', e); showToast('Erreur: ' + (e.message || JSON.stringify(e))); }
         }
@@ -3114,6 +3114,11 @@
             render();
         }
 
+        function setGlycemicControl(target, val) {
+            const obj = target === 'state.editingMember' ? state.editingMember : state.newMember;
+            if (obj) { obj.glycemic_control = val || null; render(); }
+        }
+
         function resetKcalTarget(target) {
             const obj = target === 'state.editingMember' ? state.editingMember : state.newMember;
             if (obj) { obj.custom_kcal_target = ''; render(); }
@@ -3770,6 +3775,27 @@
                                     html += '</div>';
                                 }
                             }
+                            html += '</div>';
+                            return html;
+                        })()}
+                        ${(()=>{
+                            if (m.gender === 'Enfant' || !isPremium()) return '';
+                            const gc = m.glycemic_control || '';
+                            const levels = [
+                                { val: '', label: 'Désactivé', icon: '⚪', desc: '' },
+                                { val: 'moderate', label: 'Modéré', icon: '🟡', desc: 'CG max ~30/repas' },
+                                { val: 'strict', label: 'Strict', icon: '🟢', desc: 'CG max ~20/repas' }
+                            ];
+                            let html = '<div style="margin-top:0.7rem;padding:0.6rem 0.8rem;background:linear-gradient(135deg,#FEF3C7,#F0E6F6);border-radius:10px;">';
+                            html += '<div style="font-weight:600;font-size:0.82rem;margin-bottom:0.4rem;">⚖️ Contrôle glycémique</div>';
+                            html += '<div style="font-size:0.65rem;color:#6B7280;margin-bottom:0.4rem;">Favorise les recettes à index glycémique bas pour éviter les pics de glycémie</div>';
+                            html += '<div style="display:flex;gap:0.25rem;flex-wrap:wrap;">';
+                            levels.forEach(l => {
+                                const active = gc === l.val;
+                                html += '<button onclick="setGlycemicControl(\''+target+'\',\''+l.val+'\')" style="padding:0.3rem 0.6rem;border-radius:6px;border:1.5px solid '+(active?'#8B5CF6':'#E8ECEA')+';background:'+(active?'#F3E8FF':'white')+';cursor:pointer;font-size:0.65rem;font-weight:'+(active?'600':'400')+';color:'+(active?'#7C3AED':'#666')+';font-family:inherit;">'+l.icon+' '+l.label+'</button>';
+                            });
+                            html += '</div>';
+                            if (gc) html += '<div style="font-size:0.6rem;color:#7C3AED;margin-top:0.3rem;">'+levels.find(l=>l.val===gc).desc+'</div>';
                             html += '</div>';
                             return html;
                         })()}

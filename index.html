@@ -88,6 +88,7 @@
             --white: #FFFFFF;
             
             --meal-pdej-bg: #FFF6E6; --meal-pdej-border: #F0DFBD;
+            --meal-col-bg: #F0E6F6; --meal-col-border: #D9C4E8;
             --meal-dej-bg: #E6F2F0; --meal-dej-border: #C2DDD9;
             --meal-gout-bg: #F4F0ED; --meal-gout-border: #E0D6CF;
             --meal-din-bg: #E8EDF2; --meal-din-border: #CDD6E0;
@@ -163,7 +164,7 @@
         .planning-header.meal-col { background: var(--charcoal); }
         
         .meal-cell { border-radius: 10px; padding: 0.35rem; min-height: 78px; display: flex; flex-direction: column; font-size: 0.62rem; position: relative; }
-        .meal-cell.pdej, .meal-cell.dej, .meal-cell.gout, .meal-cell.din { background: white; border: none; box-shadow: 0 1px 2px rgba(0,0,0,0.07), 0 4px 12px rgba(0,0,0,0.10), 0 8px 24px rgba(0,0,0,0.06); transition: box-shadow 0.2s, transform 0.2s; }
+        .meal-cell.pdej, .meal-cell.col, .meal-cell.dej, .meal-cell.gout, .meal-cell.din { background: white; border: none; box-shadow: 0 1px 2px rgba(0,0,0,0.07), 0 4px 12px rgba(0,0,0,0.10), 0 8px 24px rgba(0,0,0,0.06); transition: box-shadow 0.2s, transform 0.2s; }
         .meal-cell:hover { box-shadow: 0 2px 4px rgba(0,0,0,0.08), 0 8px 20px rgba(0,0,0,0.14), 0 14px 36px rgba(0,0,0,0.08); transform: translateY(-2px); }
         
         .meal-type-cell { display: flex; align-items: center; gap: 0.25rem; font-weight: 600; font-size: 0.66rem; padding: 0.3rem; }
@@ -539,7 +540,7 @@
             newStockItem: { ingredient_id: null, quantity: '', unit: 'g', expiry_date: '' },
             editingStockItem: null,
             ingredientSubTab: 'ingredients',
-            newMember: { name: '', age: '', gender: '', weight: '', height: '', activity: 'Modérée', goal: 'Maintien' },
+            newMember: { name: '', age: '', gender: '', weight: '', height: '', activity: 'Modérée', goal: 'Maintien', kcal_tracking: false, custom_kcal_target: '' },
             newIngredient: { name: '', kcal: '', proteins: '', carbs: '', fats: '', priceKg: '', unit: 'g' },
             newRecipe: { name: '', category: 'Plat principal', meal_role: 'complet', difficulty: 'Facile', preptime: 0, cooktime: 0, servings: 4, instructions: '', ingredients: [] },
             editingMember: null, editingIngredient: null, editingRecipe: null,
@@ -1008,14 +1009,19 @@
             if (!m.gender) { showToast('Sélectionnez le genre'); return; }
             if (!m.weight) { showToast('Entrez le poids'); return; }
             if (!m.height) { showToast('Entrez la taille'); return; }
-            const data = { name: m.name.trim(), age: parseInt(m.age), gender: m.gender, weight: parseFloat(m.weight), height: parseInt(m.height), activity: m.activity || 'Modérée', user_id: state.user?.id };
+            // Validation kcal target
+            if (m.custom_kcal_target) {
+                const v = validateKcalTarget(m);
+                if (!v.valid) { showToast(v.msg, 5000); return; }
+            }
+            const data = { name: m.name.trim(), age: parseInt(m.age), gender: m.gender, weight: parseFloat(m.weight), height: parseInt(m.height), activity: m.activity || 'Modérée', goal: m.goal || 'Maintien', kcal_tracking: m.kcal_tracking || false, custom_kcal_target: m.custom_kcal_target ? parseInt(m.custom_kcal_target) : null, user_id: state.user?.id };
             try {
                 let error;
                 if (state.editingMember?.id) { ({ error } = await db.from('family_members').update(data).eq('id', state.editingMember.id)); }
                 else { ({ error } = await db.from('family_members').insert([data])); }
                 if (error) throw error;
                 state.editingMember = null;
-                state.newMember = { name: '', age: '', gender: '', weight: '', height: '', activity: 'Modérée', goal: 'Maintien' };
+                state.newMember = { name: '', age: '', gender: '', weight: '', height: '', activity: 'Modérée', goal: 'Maintien', kcal_tracking: false, custom_kcal_target: '' };
                 await loadFamilyMembers(); showToast('Enregistré'); render();
             } catch(e) { console.error('saveFamilyMember error:', e); showToast('Erreur: ' + (e.message || JSON.stringify(e))); }
         }
@@ -1332,7 +1338,7 @@
         function generateAutoMenu() {
             if (state.familyMembers.length === 0) { showToast('Ajoutez d\'abord votre famille !'); return; }
             const days = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
-            const mealTypes = ['Petit-déjeuner','Déjeuner','Goûter','Dîner'];
+            const mealTypes = ['Petit-déjeuner','Collation','Déjeuner','Goûter','Dîner'];
             // Check if any meals are configured
             let totalConfigured = 0;
             for (const schedule of Object.values(state.mealSchedule)) {
@@ -1373,7 +1379,7 @@
 
         function toggleGenDay(day) {
             const cfg = state._genConfig;
-            const mealTypes = ['Petit-déjeuner','Déjeuner','Goûter','Dîner'];
+            const mealTypes = ['Petit-déjeuner','Collation','Déjeuner','Goûter','Dîner'];
             cfg.activeDays[day] = !cfg.activeDays[day];
             // When activating a day, if no participants at all, fill with all members
             if (cfg.activeDays[day]) {
@@ -1408,8 +1414,8 @@
             if (!state.showGenModal) return '';
             const cfg = state._genConfig;
             const days = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
-            const mealTypes = ['Petit-déjeuner','Déjeuner','Goûter','Dîner'];
-            const mtIcons = {'Petit-déjeuner':'🌅','Déjeuner':'🍽️','Goûter':'🧁','Dîner':'🌙'};
+            const mealTypes = ['Petit-déjeuner','Collation','Déjeuner','Goûter','Dîner'];
+            const mtIcons = {'Petit-déjeuner':'🌅','Collation':'🥜','Déjeuner':'🍽️','Goûter':'🧁','Dîner':'🌙'};
             const structOpts = [
                 { key: 'plat', label: 'Plat seul' },
                 { key: 'entree_plat', label: 'Entrée + Plat' },
@@ -1624,7 +1630,7 @@
         }
         function getWeeklyTotalCost() {
             let t = 0;
-            ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'].forEach(d => ['Petit-déjeuner','Déjeuner','Goûter','Dîner'].forEach(mt => t += getSlotCost(d, mt)));
+            ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'].forEach(d => ['Petit-déjeuner','Collation','Déjeuner','Goûter','Dîner'].forEach(mt => t += getSlotCost(d, mt)));
             return t;
         }
 
@@ -1692,7 +1698,7 @@
             if (state.weeklyMeals.length === 0) { showToast('Aucun repas planifié !'); return; }
             
             const days = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
-            const meals = [{type:'Petit-déjeuner',l:'Petit-Déj'},{type:'Déjeuner',l:'Déjeuner'},{type:'Goûter',l:'Goûter'},{type:'Dîner',l:'Dîner'}];
+            const meals = [{type:'Petit-déjeuner',l:'Petit-Déj'},{type:'Collation',l:'Collat.'},{type:'Déjeuner',l:'Déjeuner'},{type:'Goûter',l:'Goûter'},{type:'Dîner',l:'Dîner'}];
             const wt = getWeeklyTotalCost();
             const dateStr = new Date().toLocaleDateString('fr-FR', { day:'numeric', month:'long', year:'numeric' });
             
@@ -2003,7 +2009,7 @@
 
         function downloadPlanningPDF() {
             const days = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
-            const meals = [{type:'Petit-déjeuner',l:'Pdej'},{type:'Déjeuner',l:'Dej'},{type:'Goûter',l:'Goûter'},{type:'Dîner',l:'Dîner'}];
+            const meals = [{type:'Petit-déjeuner',l:'Pdej'},{type:'Collation',l:'Collat.'},{type:'Déjeuner',l:'Dej'},{type:'Goûter',l:'Goûter'},{type:'Dîner',l:'Dîner'}];
             const wt = getWeeklyTotalCost();
             let html = `<div style="font-family:Lexend,sans-serif;padding:20px;">
                 <h1 style="text-align:center;color:#2D6A63;margin-bottom:5px;">Planning de la Semaine</h1>
@@ -2416,7 +2422,7 @@
                 const sample = state.weeklyMeals[0];
             }
             const days = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
-            const meals = [{type:'Petit-déjeuner',cls:'pdej',icon:'🌅',short:'Petit-Déj'},{type:'Déjeuner',cls:'dej',icon:'🍽️',short:'Déjeuner'},{type:'Goûter',cls:'gout',icon:'🧁',short:'Goûter'},{type:'Dîner',cls:'din',icon:'🌙',short:'Dîner'}];
+            const meals = [{type:'Petit-déjeuner',cls:'pdej',icon:'🌅',short:'Petit-Déj'},{type:'Collation',cls:'col',icon:'🥜',short:'Collation'},{type:'Déjeuner',cls:'dej',icon:'🍽️',short:'Déjeuner'},{type:'Goûter',cls:'gout',icon:'🧁',short:'Goûter'},{type:'Dîner',cls:'din',icon:'🌙',short:'Dîner'}];
             const wt = getWeeklyTotalCost();
             
             if (state._generating) {
@@ -2677,7 +2683,7 @@
                         <div class="form-grid" style="margin-bottom: 0.8rem;">
                             <div><label class="label">Nom</label><input class="input" value="${r.name}" oninput="${target}.name=this.value"></div>
                             <div><label class="label">Catégorie</label><select class="select" onchange="${target}.category=this.value">${['Entrée','Plat principal','Dessert','Accompagnement','Petit-déjeuner','Goûter'].map(c => `<option ${r.category===c?'selected':''}>${c}</option>`).join('')}</select></div>
-                            <div><label class="label">Rôle au repas</label><select class="select" onchange="${target}.meal_role=this.value">${[{v:'complet',l:'🍽️ Plat complet'},{v:'principal',l:'🍗 Principal (protéine)'},{v:'accompagnement',l:'🥗 Accompagnement'},{v:'entree',l:'🥣 Entrée'},{v:'dessert',l:'🍰 Dessert'}].map(o => `<option value="${o.v}" ${(r.meal_role||'complet')===o.v?'selected':''}>${o.l}</option>`).join('')}</select></div>
+                            <div><label class="label">Rôle au repas</label><select class="select" onchange="${target}.meal_role=this.value">${[{v:'complet',l:'🍽️ Plat complet'},{v:'principal',l:'🍗 Principal (protéine)'},{v:'accompagnement',l:'🥗 Accompagnement'},{v:'entree',l:'🥣 Entrée'},{v:'dessert',l:'🍰 Dessert'},{v:'collation',l:'🍌 Collation'}].map(o => `<option value="${o.v}" ${(r.meal_role||'complet')===o.v?'selected':''}>${o.l}</option>`).join('')}</select></div>
                             <div><label class="label">Difficulté</label><select class="select" onchange="${target}.difficulty=this.value">${['Facile','Moyen','Difficile'].map(d => `<option ${r.difficulty===d?'selected':''}>${d}</option>`).join('')}</select></div>
                         </div>
                         <div class="form-grid" style="margin-bottom: 0.8rem;">
@@ -2738,7 +2744,7 @@
                             <div class="rc-cat">${rec.category || 'Plat'}</div>
                             <div class="rc-name">${rec.name}</div>
                             <div style="display:flex;gap:0.3rem;margin-bottom:0.2rem;">${badge}</div>
-                            <div class="rc-meta">⏱ ${(rec.preptime||0)+(rec.cooktime||0)}min • 👤 ${rec.servings||4} pers.${rec.meal_role && rec.meal_role !== 'complet' ? ' • '+({principal:'🍗 Principal',accompagnement:'🥗 Accomp.',entree:'🥣 Entrée',dessert:'🍰 Dessert'}[rec.meal_role]||'') : ''}</div>
+                            <div class="rc-meta">⏱ ${(rec.preptime||0)+(rec.cooktime||0)}min • 👤 ${rec.servings||4} pers.${rec.meal_role && rec.meal_role !== 'complet' ? ' • '+({principal:'🍗 Principal',accompagnement:'🥗 Accomp.',entree:'🥣 Entrée',dessert:'🍰 Dessert',collation:'🍌 Collation'}[rec.meal_role]||'') : ''}</div>
                             <div class="rc-meta">🔥 ${rec._kcalPer} kcal${rec._cost > 0 ? ' • 💰 ' + rec._cost.toFixed(2) + '€/pers' : ''}</div>
                             ${dietary ? `<div class="rc-tags">${dietary}</div>` : ''}
                             ${stars}
@@ -2972,6 +2978,39 @@
             return tdee;
         }
 
+        function calculateBMR(member) {
+            if (!member.age || !member.weight || !member.height || !member.gender) return null;
+            const w = parseFloat(member.weight), h = parseInt(member.height), a = parseInt(member.age);
+            if (member.gender === 'Homme') return Math.round((10 * w) + (6.25 * h) - (5 * a) + 5);
+            return Math.round((10 * w) + (6.25 * h) - (5 * a) - 161);
+        }
+
+        function calculateBMI(member) {
+            if (!member.weight || !member.height) return null;
+            const w = parseFloat(member.weight), h = parseInt(member.height) / 100;
+            return Math.round(w / (h * h) * 10) / 10;
+        }
+
+        function validateKcalTarget(member) {
+            const target = parseInt(member.custom_kcal_target);
+            if (!target) return { valid: true, msg: '' };
+            const bmr = calculateBMR(member);
+            const bmi = calculateBMI(member);
+            const tdee = calculateKcal(member);
+            const minAbs = member.gender === 'Homme' ? 1500 : 1200;
+            const goal = (member.goal || 'Maintien').toLowerCase();
+            // Blocage : IMC < 18.5 et objectif perte
+            if (bmi && bmi < 18.5 && goal === 'perte') return { valid: false, msg: '⛔ IMC ' + bmi + ' (insuffisance pondérale) — objectif Perte interdit. Passez en Maintien ou Prise.' };
+            if (bmi && bmi < 18.5 && target < tdee) return { valid: false, msg: '⛔ IMC ' + bmi + ' — objectif calorique ne peut pas être inférieur au TDEE (' + tdee + ' kcal).' };
+            // Blocage : en dessous du BMR
+            if (bmr && target < bmr) return { valid: false, msg: '⛔ Objectif ' + target + ' kcal est en dessous du métabolisme de base (' + bmr + ' kcal). Dangereux pour la santé.' };
+            // Blocage : en dessous du minimum absolu
+            if (target < minAbs) return { valid: false, msg: '⛔ Minimum ' + minAbs + ' kcal/j pour ' + (member.gender === 'Homme' ? 'un homme' : 'une femme') + '.' };
+            // Alerte : au dessus de 150% TDEE (sauf prise)
+            if (tdee && target > tdee * 1.5 && goal !== 'prise') return { valid: true, msg: '⚠️ Objectif très élevé (' + Math.round(target/tdee*100) + '% du TDEE). Vérifiez votre saisie.' };
+            return { valid: true, msg: '' };
+        }
+
         function estimatePortions(member) {
             const kcal = calculateKcal(member);
             if (!kcal) return 1;
@@ -3008,7 +3047,7 @@
             // Migration: if old defaultParticipants exists but no mealSchedule, build it
             if (state.defaultParticipants.length > 0 && Object.keys(state.mealSchedule).length === 0) {
                 const days = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
-                const meals = ['Petit-déjeuner','Déjeuner','Goûter','Dîner'];
+                const meals = ['Petit-déjeuner','Collation','Déjeuner','Goûter','Dîner'];
                 state.defaultParticipants.forEach(mid => {
                     state.mealSchedule[mid] = {};
                     days.forEach(d => { state.mealSchedule[mid][d] = [...meals]; });
@@ -3042,7 +3081,7 @@
 
         function selectAllMealsForMember(memberId) {
             const days = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
-            const meals = ['Petit-déjeuner','Déjeuner','Goûter','Dîner'];
+            const meals = ['Petit-déjeuner','Collation','Déjeuner','Goûter','Dîner'];
             state.mealSchedule[memberId] = {};
             days.forEach(d => { state.mealSchedule[memberId][d] = [...meals]; });
             render();
@@ -3162,8 +3201,8 @@
                                         <th style="padding:0.25rem 0.4rem;text-align:left;font-weight:600;"></th>
                                         ${['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'].map(d => `<th style="padding:0.25rem 0.2rem;text-align:center;font-weight:600;">${d}</th>`).join('')}
                                     </tr>
-                                    ${['Petit-déjeuner','Déjeuner','Goûter','Dîner'].map(mt => {
-                                        const short = mt === 'Petit-déjeuner' ? '🌅' : mt === 'Déjeuner' ? '🍽️' : mt === 'Goûter' ? '🧁' : '🌙';
+                                    ${['Petit-déjeuner','Collation','Déjeuner','Goûter','Dîner'].map(mt => {
+                                        const short = mt === 'Petit-déjeuner' ? '🌅' : mt === 'Collation' ? '🥜' : mt === 'Déjeuner' ? '🍽️' : mt === 'Goûter' ? '🧁' : '🌙';
                                         return `<tr>
                                             <td style="padding:0.2rem 0.4rem;font-weight:500;">${short}</td>
                                             ${['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'].map(d => {
@@ -3204,13 +3243,13 @@
             state._ob = {
                 step: 0,
                 members: [],
-                currentMember: { name: '', age: '', gender: '', weight: '', height: '', activity: 'Modérée', goal: 'Maintien' },
+                currentMember: { name: '', age: '', gender: '', weight: '', height: '', activity: 'Modérée', goal: 'Maintien', kcal_tracking: false, custom_kcal_target: '' },
                 addingMore: false,
                 dietary: [],
                 allergies: [],
                 appliances: [],
                 stock: [],
-                meals: { 'Petit-déjeuner': true, 'Déjeuner': true, 'Goûter': false, 'Dîner': true },
+                meals: { 'Petit-déjeuner': true, 'Collation': false, 'Déjeuner': true, 'Goûter': false, 'Dîner': true },
                 days: { Lun:true, Mar:true, Mer:true, Jeu:true, Ven:true, Sam:true, Dim:true }
             };
         }
@@ -3431,7 +3470,7 @@
             if (!m.age) { showToast('Entre l\'âge'); return; }
             if (!m.gender) { showToast('Sélectionne le genre'); return; }
             state._ob.members.push({ ...m });
-            state._ob.currentMember = { name: '', age: '', gender: '', weight: '', height: '', activity: 'Modérée', goal: 'Maintien' };
+            state._ob.currentMember = { name: '', age: '', gender: '', weight: '', height: '', activity: 'Modérée', goal: 'Maintien', kcal_tracking: false, custom_kcal_target: '' };
             render();
         }
 
@@ -3445,7 +3484,8 @@
                     const { error } = await db.from('family_members').insert([{
                         user_id: state.user.id, name: m.name, age: parseInt(m.age),
                         gender: m.gender, weight: parseFloat(m.weight) || null,
-                        height: parseFloat(m.height) || null, activity: m.activity, goal: m.goal
+                        height: parseFloat(m.height) || null, activity: m.activity, goal: m.goal,
+                        kcal_tracking: m.kcal_tracking || false
                     }]).select();
                     if (error) console.error('member insert error:', error);
                 }
@@ -3533,6 +3573,26 @@
                             <div><label class="label">Poids (kg)</label><input type="number" class="input" value="${m.weight}" oninput="${target}.weight=this.value"></div>
                             <div><label class="label">Taille (cm)</label><input type="number" class="input" value="${m.height}" oninput="${target}.height=this.value"></div>
                             <div><label class="label">Activité</label><select class="select" onchange="${target}.activity=this.value">${['Sédentaire','Légère','Modérée','Active','Très active'].map(a => `<option ${m.activity===a?'selected':''}>${a}</option>`).join('')}</select></div>
+                            <div><label class="label">Objectif</label><select class="select" onchange="${target}.goal=this.value;render()"><option ${(m.goal||'Maintien')==='Maintien'?'selected':''}>Maintien</option><option value="Perte" ${m.goal==='Perte'?'selected':''}>📉 Perte de poids</option><option value="Prise" ${m.goal==='Prise'?'selected':''}>💪 Prise de masse</option></select></div>
+                        </div>
+                        <div style="margin-top: 0.7rem; padding: 0.6rem 0.8rem; background: linear-gradient(135deg, #F0E6F6, #E6F2F0); border-radius: 10px;">
+                            <div style="display: flex; align-items: center; justify-content: space-between;">
+                                <div><span style="font-weight: 600; font-size: 0.82rem;">🎯 Suivi kcal personnalisé</span><br><span style="font-size: 0.68rem; color: #6B7280;">Le générateur ajustera les repas et collations selon l'objectif calorique</span></div>
+                                <label style="position:relative;width:44px;height:24px;flex-shrink:0;"><input type="checkbox" ${m.kcal_tracking?'checked':''} onchange="${target}.kcal_tracking=this.checked;render();" style="opacity:0;width:0;height:0;"><span style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:${m.kcal_tracking?'var(--teal)':'#ccc'};border-radius:24px;transition:.3s;"></span><span style="position:absolute;content:'';height:18px;width:18px;left:${m.kcal_tracking?'22px':'3px'};bottom:3px;background:white;border-radius:50%;transition:.3s;"></span></label>
+                            </div>
+                            ${m.kcal_tracking ? `
+                            <div style="margin-top: 0.6rem; padding-top: 0.5rem; border-top: 1px solid rgba(0,0,0,0.08);">
+                                <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.4rem;">
+                                    <span style="font-size: 0.72rem; color: #555;">TDEE estimé : <strong style="color: var(--teal);">${calculateKcal(m) || '—'} kcal/j</strong></span>
+                                    ${calculateBMI(m) ? `<span style="font-size: 0.65rem; padding: 0.15rem 0.4rem; border-radius: 6px; background: ${calculateBMI(m)<18.5?'#FEE2E2':calculateBMI(m)>30?'#FEE2E2':'#E6F2F0'}; color: ${calculateBMI(m)<18.5||calculateBMI(m)>30?'#DC2626':'#059669'};">IMC ${calculateBMI(m)}</span>` : ''}
+                                </div>
+                                <div style="display: flex; gap: 0.4rem; align-items: center;">
+                                    <input type="number" class="input" placeholder="Objectif kcal (vide = auto)" value="${m.custom_kcal_target||''}" oninput="${target}.custom_kcal_target=this.value;render();" style="flex:1; font-size: 0.8rem;">
+                                    ${m.custom_kcal_target ? `<button onclick="${target}.custom_kcal_target='';render();" style="background:none;border:none;cursor:pointer;font-size:0.75rem;color:#999;" title="Réinitialiser vers TDEE auto">↺ Auto</button>` : ''}
+                                </div>
+                                ${(()=>{ const v = validateKcalTarget(m); return v.msg ? `<div style="margin-top:0.3rem;font-size:0.68rem;color:${v.valid?'#D97706':'#DC2626'};line-height:1.3;">${v.msg}</div>` : m.custom_kcal_target ? `<div style="margin-top:0.3rem;font-size:0.68rem;color:#059669;">✅ Objectif personnalisé : ${m.custom_kcal_target} kcal/j</div>` : ''; })()}
+                                <div style="margin-top: 0.3rem; font-size: 0.62rem; color: #9CA3AF;">Vide = TDEE calculé automatiquement (${calculateKcal(m) || '—'} kcal). BMR plancher : ${calculateBMR(m) || '—'} kcal.</div>
+                            </div>` : ''}
                         </div>
                         <div style="display: flex; gap: 0.5rem; margin-top: 0.9rem;">
                             <button class="btn btn-primary" onclick="saveFamilyMember()">${isEdit ? 'Enregistrer' : 'Ajouter'}</button>
@@ -3543,7 +3603,7 @@
                         <div style="display: flex; align-items: center; gap: 0.7rem;">
                             <div style="width: 34px; height: 34px; border-radius: 50%; background: var(--teal); display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 0.85rem;">${mem.name.charAt(0).toUpperCase()}</div>
                             <div><div style="font-weight: 600; font-size: 0.85rem;">${mem.name}</div>
-                            <div style="font-size: 0.66rem; color: #6B7280;">${mem.age ? mem.age+' ans' : ''} ${mem.gender ? '• '+mem.gender : ''} ${mem.weight ? '• '+mem.weight+'kg' : ''} ${calculateKcal(mem) ? '• <span style="color: var(--teal); font-weight: 600;">' + calculateKcal(mem) + ' kcal/j</span> • ' + estimatePortions(mem) + ' portion' : ''}</div></div>
+                            <div style="font-size: 0.66rem; color: #6B7280;">${mem.age ? mem.age+' ans' : ''} ${mem.gender ? '• '+mem.gender : ''} ${mem.weight ? '• '+mem.weight+'kg' : ''} ${calculateKcal(mem) ? '• <span style="color: var(--teal); font-weight: 600;">' + (mem.custom_kcal_target || calculateKcal(mem)) + ' kcal/j</span>' + (mem.custom_kcal_target ? ' <span style="font-size:0.55rem;color:#9CA3AF;">(perso)</span>' : '') + ' • ' + estimatePortions(mem) + ' portion' : ''}${mem.kcal_tracking ? ' • <span style="color:#8B5CF6;font-weight:600;">🎯 Suivi</span>' : ''}</div></div>
                         </div>
                         <div style="display: flex; gap: 0.3rem;">
                             <button class="btn btn-edit btn-sm" onclick='editFamilyMember(${JSON.stringify(mem).replace(/'/g, "\\'")})'>✏️</button>

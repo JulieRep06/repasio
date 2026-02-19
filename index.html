@@ -547,7 +547,7 @@
             showMealModal: false, currentMealEdit: null,
             searchRecipe: '', searchIngredient: '',
             toast: null, showUserMenu: false, userPlan: { plan: 'free', trial_start: null, trial_end: null },
-            resetEmail: '', showResetForm: false, showAuthForm: false, showFeatures: false,
+            resetEmail: '', showResetForm: false, showAuthForm: false, showFeatures: false, showPricing: false,
             profile: null, showPremiumModal: false, premiumFeatureClicked: '',
             legalPage: null,
             showOnboarding: false, onboardingStep: 0,
@@ -643,16 +643,16 @@
                                 class="plan-card" id="plan-monthly"
                                 style="flex: 1; background: #F8FAF9; border-radius: var(--radius-md); padding: 1rem; border: 2px solid var(--teal); cursor: pointer; transition: border 0.2s;">
                                 <div style="font-size: 0.7rem; color: #999; font-weight: 600; text-transform: uppercase;">Mensuel</div>
-                                <div style="font-size: 1.6rem; font-weight: 700; color: var(--teal); margin: 0.2rem 0;">3,99\u20AC</div>
+                                <div style="font-size: 1.6rem; font-weight: 700; color: var(--teal); margin: 0.2rem 0;">5,99\u20AC</div>
                                 <div style="font-size: 0.72rem; color: #888;">/mois</div>
                             </div>
                             <div onclick="document.querySelectorAll('.plan-card').forEach(c=>c.style.borderColor='#E8ECEA');this.style.borderColor='var(--teal)';" 
                                 class="plan-card" id="plan-yearly"
                                 style="flex: 1; background: #F8FAF9; border-radius: var(--radius-md); padding: 1rem; border: 2px solid #E8ECEA; cursor: pointer; transition: border 0.2s; position: relative;">
-                                <div style="position: absolute; top: -8px; right: 8px; background: var(--gold); color: white; font-size: 0.55rem; padding: 2px 6px; border-radius: 4px; font-weight: 700;">-27%</div>
+                                <div style="position: absolute; top: -8px; right: 8px; background: var(--gold); color: white; font-size: 0.55rem; padding: 2px 6px; border-radius: 4px; font-weight: 700;">-30%</div>
                                 <div style="font-size: 0.7rem; color: #999; font-weight: 600; text-transform: uppercase;">Annuel</div>
-                                <div style="font-size: 1.6rem; font-weight: 700; color: var(--teal); margin: 0.2rem 0;">34,99\u20AC</div>
-                                <div style="font-size: 0.72rem; color: #888;">soit 2,92\u20AC/mois</div>
+                                <div style="font-size: 1.6rem; font-weight: 700; color: var(--teal); margin: 0.2rem 0;">49,99\u20AC</div>
+                                <div style="font-size: 0.72rem; color: #888;">soit 4,17\u20AC/mois</div>
                             </div>
                         </div>
 
@@ -775,19 +775,25 @@
                     render();
                 });
 
-                // Session watchdog — every 2min, verify session is alive
+                // Session watchdog — every 60s, verify session and auto-refresh
                 setInterval(async () => {
                     if (!state.user) return;
-                    const { data: { session: s } } = await db.auth.getSession();
-                    if (!s) {
-                        console.warn('[auth] session lost, trying refresh...');
-                        const { error } = await db.auth.refreshSession();
-                        if (error) {
-                            showToast('⚠️ Session expirée, reconnexion nécessaire', 4000);
-                            state.user = null; resetState(); render();
+                    try {
+                        const { data: { session: s } } = await db.auth.getSession();
+                        if (!s) {
+                            console.warn('[auth] session lost, trying refresh...');
+                            const { data: rd, error } = await db.auth.refreshSession();
+                            if (error || !rd?.session) {
+                                await new Promise(r => setTimeout(r, 2000));
+                                const { data: rd2, error: e2 } = await db.auth.refreshSession();
+                                if (e2 || !rd2?.session) {
+                                    showToast('⚠️ Session expirée, reconnexion...', 3000);
+                                    state.user = null; resetState(); render();
+                                } else { state.user = rd2.session.user; console.log('[auth] recovered 2nd try'); }
+                            } else { state.user = rd.session.user; console.log('[auth] refreshed ok'); }
                         }
-                    }
-                }, 120000);
+                    } catch(e) { console.warn('[auth] watchdog error:', e); }
+                }, 60000);
             } catch (e) { console.error('Init error:', e); }
             await loadSiteContent();
             state.isLoading = false;
@@ -1024,13 +1030,12 @@
         async function checkSession() {
             const { data: { session } } = await db.auth.getSession();
             if (session) return true;
-            // Try refresh
             console.warn('[auth] session null, attempting refresh...');
             const { data: refreshData, error } = await db.auth.refreshSession();
-            if (!error && refreshData.session) {
-                state.user = refreshData.session.user;
-                return true;
-            }
+            if (!error && refreshData.session) { state.user = refreshData.session.user; return true; }
+            await new Promise(r => setTimeout(r, 1500));
+            const { data: rd2, error: e2 } = await db.auth.refreshSession();
+            if (!e2 && rd2?.session) { state.user = rd2.session.user; return true; }
             showToast('⚠️ Session expirée, veuillez vous reconnecter', 4000);
             state.user = null; resetState(); render();
             return false;
@@ -1055,7 +1060,7 @@
             // Guard: no kcal tracking for children
             if (m.gender === 'Enfant') { m.kcal_tracking = false; m.custom_kcal_target = ''; m.meal_config = null; }
             // Init default meal_config when enabling kcal_tracking
-            if (m.kcal_tracking && !m.meal_config) { m.meal_config = { home_meals: ['Petit-déjeuner','Collation','Déjeuner','Goûter','Dîner'], target_100: true }; }
+            if (m.kcal_tracking && !m.meal_config) { m.meal_config = { target_100: true }; }
             if (!m.kcal_tracking) { m.meal_config = null; }
             const data = { name: m.name.trim(), age: parseInt(m.age), gender: m.gender, weight: parseFloat(m.weight), height: parseInt(m.height), activity: m.activity || 'Modérée', goal: m.goal || 'Maintien', kcal_tracking: m.kcal_tracking || false, custom_kcal_target: m.custom_kcal_target ? parseInt(m.custom_kcal_target) : null, meal_config: m.meal_config || null, glycemic_control: m.glycemic_control || null, user_id: state.user?.id };
             console.log('[saveFamilyMember]', data);
@@ -1823,21 +1828,20 @@
                 trackedMembers.forEach(mem => {
                     const tdee = calculateKcal(mem) || 0;
                     const effectiveTarget = parseInt(mem.custom_kcal_target) || tdee;
-                    const mc = mem.meal_config || { home_meals: ['Petit-déjeuner','Collation','Déjeuner','Goûter','Dîner'], target_100: true };
-                    const homeMeals = mc.home_meals || ['Petit-déjeuner','Collation','Déjeuner','Goûter','Dîner'];
-                    const mealWeights = {'Petit-déjeuner':0.20,'Collation':0.10,'Déjeuner':0.30,'Goûter':0.10,'Dîner':0.30};
-                    const homePct = homeMeals.reduce((s,ml) => s + ((mealWeights[ml]||0)*100), 0);
-                    const dayTarget = mc.target_100 ? effectiveTarget : Math.round(effectiveTarget * homePct / 100);
+                    const mc = mem.meal_config || { target_100: true };
+                    const dayTarget = mc.target_100 ? effectiveTarget : Math.round(effectiveTarget * 0.9);
                     const portion = estimatePortions(mem);
                     const bmi = calculateBMI(mem);
+                    const hasGC = mem.glycemic_control && mem.glycemic_control !== '';
+                    const gcLabel = mem.glycemic_control === 'strict' ? 'Strict (CG≤20)' : mem.glycemic_control === 'moderate' ? 'Modéré (CG≤30)' : '';
                     
                     html += `<div style="margin-bottom:15px;padding:10px;border:1px solid #E8ECEA;border-radius:8px;">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                             <div><strong style="font-size:13px;color:#333;">${mem.name}</strong>
                             <span style="font-size:10px;color:#888;margin-left:6px;">${mem.age} ans • ${mem.gender} • ${mem.weight}kg • ${mem.height}cm</span></div>
                             <div style="text-align:right;">
-                                <div style="font-size:10px;color:#666;">Objectif : <strong style="color:#2D6A63;">${dayTarget} kcal/j</strong>${mc.target_100?' (100% maison)':' ('+homePct+'%)'}</div>
-                                <div style="font-size:9px;color:#999;">TDEE: ${tdee} kcal • BMR: ${calculateBMR(mem)} kcal${bmi?' • IMC: '+bmi:''} • ${mem.goal}</div>
+                                <div style="font-size:10px;color:#666;">Objectif : <strong style="color:#2D6A63;">${dayTarget} kcal/j</strong>${mc.target_100?' (100% maison)':''}</div>
+                                <div style="font-size:9px;color:#999;">TDEE: ${tdee} kcal • BMR: ${calculateBMR(mem)} kcal${bmi?' • IMC: '+bmi:''} • ${mem.goal}${hasGC ? ' • ⚖️ IG '+gcLabel : ''}</div>
                             </div>
                         </div>
                         <table style="width:100%;border-collapse:collapse;font-size:9px;">
@@ -1851,12 +1855,11 @@
                     days.forEach(d => { dayTotals[d] = 0; });
                     
                     mealTypes.forEach(meal => {
-                        const isHome = homeMeals.includes(meal.type);
-                        html += `<tr style="${!isHome?'color:#bbb;font-style:italic;':''}"><td style="background:#F8FAF9;font-weight:bold;padding:3px;border:1px solid #ddd;">${meal.l}${!isHome?' 🚫':''}</td>`;
+                        html += `<tr><td style="background:#F8FAF9;font-weight:bold;padding:3px;border:1px solid #ddd;">${meal.l}</td>`;
                         days.forEach(d => {
                             const kcalPP = Math.round(getSlotKcalPerPerson(d, meal.type) * portion);
-                            if (isHome) dayTotals[d] += kcalPP;
-                            html += `<td style="text-align:center;padding:3px;border:1px solid #ddd;${!isHome?'color:#ccc;':''}">${kcalPP > 0 ? kcalPP : '—'}</td>`;
+                            dayTotals[d] += kcalPP;
+                            html += `<td style="text-align:center;padding:3px;border:1px solid #ddd;">${kcalPP > 0 ? kcalPP : '—'}</td>`;
                         });
                         html += `<td style="text-align:center;padding:3px;border:1px solid #ddd;color:#888;">—</td></tr>`;
                     });
@@ -1876,7 +1879,7 @@
                     html += `<td style="text-align:center;padding:4px;border:1px solid #ddd;background:#E6F2F0;"><strong style="color:#2D6A63;">${avg}</strong><br><span style="font-size:7px;color:#2D6A63;">${avgPct}%</span></td></tr>`;
                     
                     html += `</table>
-                        <div style="margin-top:6px;font-size:8px;color:#999;">✅ 90-110% de l'objectif • ⚠️ En dessous • 🔺 Au dessus • 🚫 Repas hors maison (non comptés)</div>
+                        <div style="margin-top:6px;font-size:8px;color:#999;">✅ 90-110% de l'objectif • ⚠️ En dessous • 🔺 Au dessus${hasGC ? ' • ⚖️ Contrôle glycémique '+gcLabel : ''}</div>
                     </div>`;
                 });
             }
@@ -1921,30 +1924,33 @@
             
             html += `</div>`;
             
-            // Open in new window for print/save as PDF
-            const printWin = window.open('', '_blank');
-            if (!printWin) { showToast('⚠️ Autorisez les pop-ups pour générer le PDF'); return; }
-            printWin.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
-                <title>Repasio - Semaine du ${dateStr}</title>
-                <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-                <style>
-                    body { font-family: Lexend, sans-serif; margin: 0; padding: 0; }
-                    @media print { .no-print { display: none !important; } @page { margin: 8mm; } }
-                    .print-bar { background: #2D6A63; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
-                    .print-bar button { background: white; color: #2D6A63; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; font-family: inherit; font-size: 14px; }
-                </style>
-            </head><body>
-                <div class="no-print print-bar">
-                    <span style="font-weight:600;">Repasio — Aperçu PDF</span>
-                    <div><button onclick="window.print()">🖨️ Imprimer / Enregistrer PDF</button></div>
+            // Show PDF in overlay popup (no popup blocker issues!)
+            const overlay = document.createElement('div');
+            overlay.id = 'pdf-overlay';
+            overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;flex-direction:column;animation:fadeIn .2s;';
+            overlay.innerHTML = `
+                <div style="background:#2D6A63;color:white;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+                    <span style="font-weight:600;font-family:Lexend,sans-serif;">📄 Repasio — Aperçu PDF</span>
+                    <div style="display:flex;gap:8px;">
+                        <button onclick="document.getElementById('pdf-frame').contentWindow.print()" style="background:white;color:#2D6A63;border:none;padding:8px 16px;border-radius:6px;font-weight:600;cursor:pointer;font-family:Lexend,sans-serif;font-size:13px;">🖨️ Imprimer / PDF</button>
+                        <button onclick="document.getElementById('pdf-overlay').remove()" style="background:rgba(255,255,255,0.2);color:white;border:none;padding:8px 16px;border-radius:6px;font-weight:600;cursor:pointer;font-family:Lexend,sans-serif;font-size:13px;">✕ Fermer</button>
+                    </div>
                 </div>
-                ${html}
-            </body></html>`);
-            printWin.document.close();
+                <iframe id="pdf-frame" style="flex:1;border:none;background:white;"></iframe>
+            `;
+            document.body.appendChild(overlay);
+            const frame = document.getElementById('pdf-frame');
+            const frameDoc = frame.contentDocument || frame.contentWindow.document;
+            frameDoc.open();
+            frameDoc.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Repasio - Semaine du ' + dateStr + '</title><link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&display=swap" rel="stylesheet"><style>body{font-family:Lexend,sans-serif;margin:0;padding:15px;}@media print{@page{margin:8mm;}}</style></head><body>' + html + '</body></html>');
+            frameDoc.close();
+            // Close on Escape
+            const escHandler = (e) => { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', escHandler); } };
+            document.addEventListener('keydown', escHandler);
 
             // Sauvegarder dans l'historique PDF (30 jours)
             savePdfToHistory(dateStr, html);
-            showToast('📥 Aperçu PDF ouvert');
+            showToast('📄 PDF prêt — Imprimez ou enregistrez !', 3000);
         }
 
         // ============================================
@@ -1983,25 +1989,19 @@
                 const { data, error } = await db.from('user_pdfs').select('html_content, label').eq('id', pdfId).single();
                 if (error) { showToast('Erreur: ' + error.message); return; }
                 if (!data?.html_content) { showToast('PDF vide ou introuvable'); return; }
-                const printWin = window.open('', '_blank');
-                if (!printWin) { showToast('⚠️ Pop-up bloqué ! Autorisez les pop-ups pour ce site.'); return; }
-                printWin.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
-                    <title>Repasio - ${data.label || 'PDF'}</title>
-                    <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-                    <style>
-                        body { font-family: Lexend, sans-serif; margin: 0; padding: 0; }
-                        @media print { .no-print { display: none !important; } @page { margin: 8mm; } }
-                        .print-bar { background: #2D6A63; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
-                        .print-bar button { background: white; color: #2D6A63; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; font-family: inherit; font-size: 14px; }
-                    </style>
-                </head><body>
-                    <div class="no-print print-bar">
-                        <span style="font-weight:600;">Repasio — ${data.label || 'PDF'}</span>
-                        <div><button onclick="window.print()">🖨️ Imprimer / Enregistrer PDF</button></div>
-                    </div>
-                    ${data.html_content}
-                </body></html>`);
-                printWin.document.close();
+                const label = data.label || 'PDF';
+                const overlay = document.createElement('div');
+                overlay.id = 'pdf-overlay';
+                overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;flex-direction:column;';
+                overlay.innerHTML = '<div style="background:#2D6A63;color:white;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;"><span style="font-weight:600;font-family:Lexend,sans-serif;">📄 Repasio — '+label+'</span><div style="display:flex;gap:8px;"><button onclick="document.getElementById(&apos;pdf-frame&apos;).contentWindow.print()" style="background:white;color:#2D6A63;border:none;padding:8px 16px;border-radius:6px;font-weight:600;cursor:pointer;font-family:Lexend,sans-serif;font-size:13px;">🖨️ Imprimer / PDF</button><button onclick="document.getElementById(&apos;pdf-overlay&apos;).remove()" style="background:rgba(255,255,255,0.2);color:white;border:none;padding:8px 16px;border-radius:6px;font-weight:600;cursor:pointer;font-family:Lexend,sans-serif;font-size:13px;">✕ Fermer</button></div></div><iframe id="pdf-frame" style="flex:1;border:none;background:white;"></iframe>';
+                document.body.appendChild(overlay);
+                const frame = document.getElementById('pdf-frame');
+                const fd = frame.contentDocument || frame.contentWindow.document;
+                fd.open();
+                fd.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Repasio - '+label+'</title><link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&display=swap" rel="stylesheet"><style>body{font-family:Lexend,sans-serif;margin:0;padding:15px;}@media print{@page{margin:8mm;}}</style></head><body>'+data.html_content+'</body></html>');
+                fd.close();
+                const escH = (e) => { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', escH); } };
+                document.addEventListener('keydown', escH);
             } catch(e) { showToast('Erreur: ' + (e.message || e)); console.error('[openPdf]', e); }
         }
 
@@ -2219,7 +2219,7 @@
                             ${status === 'active' && p?.stripe_plan ? `
                                 <div style="display: flex; justify-content: space-between; padding: 0.5rem 0; border-top: 1px solid #E8ECEA; font-size: 0.8rem;">
                                     <span style="color: #6B7280;">Formule</span>
-                                    <span style="font-weight: 600;">${p.stripe_plan === 'yearly' ? 'Annuel (34,99€/an)' : 'Mensuel (3,99€/mois)'}</span>
+                                    <span style="font-weight: 600;">${p.stripe_plan === 'yearly' ? 'Annuel (49,99€/an)' : 'Mensuel (5,99€/mois)'}</span>
                                 </div>
                             ` : ''}
                         </div>
@@ -2355,13 +2355,79 @@
         
         function renderLanding() {
             const features = [
-                { icon: '\u{1F4C5}', title: 'Planning intelligent', desc: 'Organisez les repas de votre famille pour toute la semaine.' },
-                { icon: '\u{1F4B0}', title: 'Budget ma\u00eetris\u00e9', desc: 'Fixez un budget hebdo et Repasio compose des menus adapt\u00e9s.' },
+                { icon: '\u{1F4C5}', title: 'Planning intelligent', desc: 'Organisez les repas de votre famille pour toute la semaine avec g\u00e9n\u00e9ration automatique.' },
+                { icon: '\u{1F4B0}', title: 'Budget ma\u00eetris\u00e9', desc: 'Fixez un budget hebdo et Repasio compose des menus adapt\u00e9s \u00e0 votre enveloppe.' },
                 { icon: '\u{1F4E6}', title: 'Gestion du stock', desc: 'Suivez vos aliments, leurs p\u00e9remptions, z\u00e9ro gaspillage.' },
                 { icon: '\u{1F6D2}', title: 'Courses automatiques', desc: 'PDF de courses avec d\u00e9duction automatique de votre stock.' },
                 { icon: '\u{1F465}', title: 'Toute la famille', desc: 'Portions par participant, quantit\u00e9s ajust\u00e9es automatiquement.' },
-                { icon: '\u{1F4D6}', title: 'Vos recettes', desc: 'Cr\u00e9ez, organisez et exportez vos recettes en PDF.' }
+                { icon: '\u{1F4D6}', title: 'Vos recettes', desc: 'Cr\u00e9ez, organisez et exportez vos recettes en PDF.' },
+                { icon: '\u{1F3AF}', title: 'Suivi calorique', desc: 'Objectifs kcal personnalis\u00e9s par membre, suivi TDEE/BMR/IMC automatique.' },
+                { icon: '\u2696\uFE0F', title: 'Contr\u00f4le glyc\u00e9mique', desc: 'Filtrage par index glyc\u00e9mique (strict/mod\u00e9r\u00e9) pour \u00e9viter les pics de glyc\u00e9mie.' },
+                { icon: '\u{1F95C}', title: 'Collations intelligentes', desc: 'G\u00e9n\u00e9ration automatique de collations adapt\u00e9es au d\u00e9ficit calorique du jour.' },
+                { icon: '\u{1F4C4}', title: 'PDF complet', desc: 'Planning + recettes + suivi kcal + liste de courses en un seul document.' }
             ];
+
+            const pricingHtml = `
+                <section class="features-page" style="padding-top:80px;">
+                    <div class="features-page-inner">
+                        <h2 style="text-align:center;font-size:1.8rem;color:var(--teal);margin-bottom:0.4rem;">Nos tarifs</h2>
+                        <p style="text-align:center;color:#5A6B68;margin-bottom:40px;">Commencez gratuitement, passez Premium quand vous \u00eates pr\u00eat</p>
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:24px;max-width:900px;margin:0 auto;">
+                            <div style="border:2px solid #E8ECEA;border-radius:16px;padding:2rem;text-align:center;">
+                                <div style="font-size:1.1rem;font-weight:700;color:var(--charcoal);margin-bottom:0.5rem;">Gratuit</div>
+                                <div style="font-size:2.5rem;font-weight:800;color:var(--teal);margin-bottom:0.3rem;">0\u20ac</div>
+                                <div style="font-size:0.8rem;color:#888;margin-bottom:1.5rem;">Pour toujours</div>
+                                <ul style="text-align:left;font-size:0.82rem;color:#555;list-style:none;padding:0;margin:0 0 1.5rem;">
+                                    <li style="padding:0.4rem 0;border-bottom:1px solid #f0f0f0;">\u2705 Planning de la semaine</li>
+                                    <li style="padding:0.4rem 0;border-bottom:1px solid #f0f0f0;">\u2705 Gestion de la famille</li>
+                                    <li style="padding:0.4rem 0;border-bottom:1px solid #f0f0f0;">\u2705 Recettes personnelles</li>
+                                    <li style="padding:0.4rem 0;border-bottom:1px solid #f0f0f0;">\u2705 +200 recettes Repasio</li>
+                                    <li style="padding:0.4rem 0;color:#bbb;">\u274C G\u00e9n\u00e9ration auto de menus</li>
+                                    <li style="padding:0.4rem 0;color:#bbb;">\u274C Suivi nutritionnel</li>
+                                    <li style="padding:0.4rem 0;color:#bbb;">\u274C Gestion du stock</li>
+                                    <li style="padding:0.4rem 0;color:#bbb;">\u274C Export PDF complet</li>
+                                </ul>
+                                <button class="btn-hero-secondary" onclick="showAuth('register')" style="width:100%;justify-content:center;">S'inscrire</button>
+                            </div>
+                            <div style="border:2px solid var(--teal);border-radius:16px;padding:2rem;text-align:center;position:relative;background:linear-gradient(135deg,#F0FAF8,#F8F5FF);">
+                                <div style="position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#8B5CF6,#6D28D9);color:white;padding:0.25rem 1rem;border-radius:20px;font-size:0.7rem;font-weight:700;">\u2728 POPULAIRE</div>
+                                <div style="font-size:1.1rem;font-weight:700;color:var(--charcoal);margin-bottom:0.5rem;">Premium Mensuel</div>
+                                <div style="font-size:2.5rem;font-weight:800;color:var(--teal);margin-bottom:0.3rem;">5,99\u20ac<span style="font-size:0.9rem;font-weight:400;color:#888;">/mois</span></div>
+                                <div style="font-size:0.8rem;color:#8B5CF6;margin-bottom:1.5rem;">14 jours d'essai gratuit \u2014 sans carte bancaire</div>
+                                <ul style="text-align:left;font-size:0.82rem;color:#555;list-style:none;padding:0;margin:0 0 1.5rem;">
+                                    <li style="padding:0.4rem 0;border-bottom:1px solid #e8e8e8;">\u2705 Tout le plan Gratuit</li>
+                                    <li style="padding:0.4rem 0;border-bottom:1px solid #e8e8e8;">\u2705 <strong>G\u00e9n\u00e9ration auto de menus</strong></li>
+                                    <li style="padding:0.4rem 0;border-bottom:1px solid #e8e8e8;">\u2705 <strong>Suivi nutritionnel</strong> (calories, IMC)</li>
+                                    <li style="padding:0.4rem 0;border-bottom:1px solid #e8e8e8;">\u2705 <strong>Indicateurs glyc\u00e9miques</strong></li>
+                                    <li style="padding:0.4rem 0;border-bottom:1px solid #e8e8e8;">\u2705 <strong>Collations adapt\u00e9es</strong></li>
+                                    <li style="padding:0.4rem 0;border-bottom:1px solid #e8e8e8;">\u2705 Gestion du stock & p\u00e9remptions</li>
+                                    <li style="padding:0.4rem 0;border-bottom:1px solid #e8e8e8;">\u2705 Export PDF (planning + recettes + courses)</li>
+                                    <li style="padding:0.4rem 0;">\u2705 Support prioritaire</li>
+                                </ul>
+                                <button class="btn-hero-primary" onclick="showAuth('register')" style="width:100%;justify-content:center;">Essai gratuit 14 jours</button>
+                            </div>
+                            <div style="border:2px solid #E8ECEA;border-radius:16px;padding:2rem;text-align:center;position:relative;background:#FAFFFE;">
+                                <div style="position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:var(--teal);color:white;padding:0.25rem 1rem;border-radius:20px;font-size:0.7rem;font-weight:700;">\u{1F4B0} \u00c9CONOMISEZ 30%</div>
+                                <div style="font-size:1.1rem;font-weight:700;color:var(--charcoal);margin-bottom:0.5rem;">Premium Annuel</div>
+                                <div style="font-size:2.5rem;font-weight:800;color:var(--teal);margin-bottom:0.3rem;">49,99\u20ac<span style="font-size:0.9rem;font-weight:400;color:#888;">/an</span></div>
+                                <div style="font-size:0.8rem;color:var(--teal);margin-bottom:1.5rem;">soit 4,17\u20ac/mois \u2014 14 jours d'essai gratuit</div>
+                                <ul style="text-align:left;font-size:0.82rem;color:#555;list-style:none;padding:0;margin:0 0 1.5rem;">
+                                    <li style="padding:0.4rem 0;border-bottom:1px solid #e8e8e8;">\u2705 Toutes les fonctionnalit\u00e9s Premium</li>
+                                    <li style="padding:0.4rem 0;border-bottom:1px solid #e8e8e8;">\u2705 <strong>Engagement annuel, prix r\u00e9duit</strong></li>
+                                    <li style="padding:0.4rem 0;">\u2705 Support prioritaire</li>
+                                </ul>
+                                <button class="btn-hero-primary" onclick="showAuth('register')" style="width:100%;justify-content:center;background:var(--teal);">Essai gratuit 14 jours</button>
+                            </div>
+                        </div>
+                        <div style="max-width:800px;margin:2rem auto 0;padding:1.2rem;background:#F8FAF9;border-radius:12px;border:1px solid #E8ECEA;">
+                            <p style="font-size:0.75rem;color:#888;line-height:1.6;margin:0;text-align:center;">
+                                \u2139\uFE0F <strong>Information importante :</strong> Repasio est un outil d\u2019organisation et de planification de repas. Il n\u2019a pas vocation \u00e0 se substituer \u00e0 un avis m\u00e9dical, nutritionnel ou di\u00e9t\u00e9tique professionnel. Les indicateurs fournis (calories, index glyc\u00e9mique, IMC) sont des estimations \u00e0 titre informatif et ne constituent en aucun cas un diagnostic, une prescription ou un programme th\u00e9rapeutique. Si vous suivez un r\u00e9gime sp\u00e9cifique ou souffrez d\u2019une pathologie (diab\u00e8te, troubles alimentaires, allergies, etc.), consultez un professionnel de sant\u00e9 qualifi\u00e9 avant d\u2019adapter votre alimentation.
+                            </p>
+                        </div>
+                        <div class="features-back"><button onclick="state.showPricing=false;render();">\u2190 Retour</button></div>
+                    </div>
+                </section>
+            `;
             
             let authModal = '';
             if (state.showAuthForm) {
@@ -2394,7 +2460,7 @@
                 authModal = `<div class="auth-overlay" onclick="if(event.target===this)closeAuth();"><div class="auth-card"><button class="auth-close" onclick="closeAuth()">\u2715</button>${authForm}</div></div>`;
             }
             
-            const mainContent = state.showFeatures ? `
+            const mainContent = state.showPricing ? pricingHtml : state.showFeatures ? `
                 <div class="features-page">
                     <div class="features-page-inner">
                         <h2>Tout pour organiser vos repas</h2>
@@ -2415,9 +2481,9 @@
                 <section class="hero">
                     <div class="container hero-grid">
                         <div class="hero-content">
-                            <div class="badge-new">\u2728 Planificateur de repas intelligent</div>
-                            <h1>Mangez mieux, <span class="gradient-text">gaspillez moins.</span></h1>
-                            <p>Planifiez vos repas, g\u00e9rez votre stock et vos p\u00e9remptions, g\u00e9n\u00e9rez vos listes de courses et ma\u00eetrisez votre budget alimentaire.</p>
+                            <div class="badge-new">\u2728 L'outil de planification repas pour toute la famille</div>
+                            <h1>Organisez vos repas, <span class="gradient-text">simplifiez votre quotidien.</span></h1>
+                            <p>Repasio aide les familles \u00e0 planifier leurs repas, ma\u00eetriser leur budget alimentaire et atteindre leurs objectifs bien-\u00eatre \u2014 que ce soit mieux s'organiser au quotidien, accompagner une d\u00e9marche de perte de poids ou de prise de masse dans le cadre d'un suivi adapt\u00e9.</p>
                             
                             <div class="hero-actions">
                                 <button class="btn-hero-primary" onclick="showAuth('register')">Commencer gratuitement</button>
@@ -2455,9 +2521,10 @@
                 <header class="landing-header" role="banner">
                     <div class="container">
                         <nav aria-label="Navigation principale">
-                            <div class="logo"><img src="${LOGO_B64}" alt="Repasio logo" width="32" height="32">Repasio</div>
+                            <div class="logo" style="font-size:1.3rem;font-weight:700;color:white;">Repasio</div>
                             <ul class="nav-links">
-                                <span class="nav-text"><a onclick="toggleFeatures()">${state.showFeatures ? '\u2190 Accueil' : 'Fonctionnalit\u00e9s'}</a></span>
+                                <span class="nav-text"><a onclick="state.showFeatures=true;state.showPricing=false;render();">Fonctionnalit\u00e9s</a></span>
+                                <span class="nav-text"><a onclick="state.showPricing=true;state.showFeatures=false;render();">Tarifs</a></span>
                                 <li><a onclick="showAuth('login')">Connexion</a></li>
                                 <li><a class="btn-cta-small" onclick="showAuth('register')">S'inscrire</a></li>
                             </ul>
@@ -2468,6 +2535,7 @@
                 ${mainContent}
                 <footer class="landing-footer" style="margin-top: auto;" role="contentinfo">
                     Repasio \u2014 Planificateur de repas familial<br>
+                    <span style="font-size:0.65rem;color:#999;line-height:1.5;display:block;margin:0.5rem auto 0;max-width:600px;">Repasio est un outil d\u2019organisation. Il ne se substitue pas \u00e0 l\u2019avis d\u2019un m\u00e9decin, di\u00e9t\u00e9ticien ou nutritionniste. Consultez un professionnel de sant\u00e9 pour tout besoin m\u00e9dical ou r\u00e9gime sp\u00e9cifique.</span><br>
                     <span class="legal-links"><a onclick="showLegalPage('mentions-legales')">Mentions légales</a> · <a onclick="showLegalPage('cgv')">CGV</a> · <a onclick="showLegalPage('confidentialite')">Confidentialité</a> · <a onclick="state.showContactModal=true;render();">Contact</a></span>
                 </footer>
                 </div>
@@ -2481,7 +2549,6 @@
             const name = state.user?.user_metadata?.name || state.user?.email?.split('@')[0] || 'User';
             return `<header class="header"><div class="header-inner">
                 <div style="display: flex; align-items: center; gap: 0.6rem;">
-                    <img src="${LOGO_B64}" alt="Repasio" class="logo-img">
                     <div><h1 style="font-size: 1.05rem; font-weight: 700; color: white; margin: 0;">Repasio</h1><p style="font-size: 0.58rem; color: rgba(255,255,255,0.55); margin: 0;">Planificateur de repas</p></div>
                 </div>
                 <div class="user-menu"><button class="user-btn" onclick="state.showUserMenu=!state.showUserMenu;render();">${name.charAt(0).toUpperCase()}</button>
@@ -3632,7 +3699,7 @@
                         gender: m.gender, weight: parseFloat(m.weight) || null,
                         height: parseFloat(m.height) || null, activity: m.activity, goal: m.goal,
                         kcal_tracking: m.kcal_tracking || false,
-                        meal_config: m.kcal_tracking ? (m.meal_config || { home_meals: ['Petit-déjeuner','Collation','Déjeuner','Goûter','Dîner'], target_100: true }) : null
+                        meal_config: m.kcal_tracking ? (m.meal_config || { target_100: true }) : null
                     }]).select();
                     if (error) console.error('member insert error:', error);
                 }
@@ -3740,38 +3807,24 @@
                                 html += '<div style="display:flex;align-items:center;justify-content:space-between;"><div><span style="font-weight:600;font-size:0.82rem;">🎯 Suivi kcal pour '+(m.name||'ce membre')+'</span><br><span style="font-size:0.68rem;color:#6B7280;">Le générateur ajustera les repas et collations selon l\'objectif calorique</span>'+trialBadge+'</div>';
                                 html += '<label style="position:relative;width:44px;height:24px;flex-shrink:0;"><input type="checkbox" '+(m.kcal_tracking?'checked':'')+' onchange="'+target+'.kcal_tracking=this.checked;render();" style="opacity:0;width:0;height:0;"><span style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:'+(m.kcal_tracking?'var(--teal)':'#ccc')+';border-radius:24px;transition:.3s;"></span><span style="position:absolute;content:"";height:18px;width:18px;left:'+(m.kcal_tracking?'22px':'3px')+';bottom:3px;background:white;border-radius:50%;transition:.3s;"></span></label></div>';
                                 if (m.kcal_tracking) {
-                                    if (!m.meal_config) m.meal_config = { home_meals: ['Petit-déjeuner','Collation','Déjeuner','Goûter','Dîner'], target_100: true };
+                                    if (!m.meal_config) m.meal_config = { target_100: true };
                                     const mc = m.meal_config;
-                                    const allMeals = ['Petit-déjeuner','Collation','Déjeuner','Goûter','Dîner'];
-                                    const mealIcons = {'Petit-déjeuner':'🌅','Collation':'🥜','Déjeuner':'🍽️','Goûter':'🍪','Dîner':'🌙'};
-                                    const homeMeals = mc.home_meals || allMeals;
-                                    const weights = {'Petit-déjeuner':20,'Collation':10,'Déjeuner':30,'Goûter':10,'Dîner':30};
-                                    const homePct = homeMeals.reduce((s,ml) => s + (weights[ml]||0), 0);
                                     const tdee = calculateKcal(m) || 0;
                                     const effectiveTarget = parseInt(m.custom_kcal_target) || tdee;
-                                    const dayTarget = mc.target_100 ? effectiveTarget : Math.round(effectiveTarget * homePct / 100);
+                                    const dayTarget = mc.target_100 ? effectiveTarget : Math.round(effectiveTarget * 0.9);
                                     const bmiVal = calculateBMI(m);
                                     const bmiHtml = bmiVal ? '<span style="font-size:0.65rem;padding:0.15rem 0.4rem;border-radius:6px;background:'+(bmiVal<18.5||bmiVal>30?'#FEE2E2':'#E6F2F0')+';color:'+(bmiVal<18.5||bmiVal>30?'#DC2626':'#059669')+';">IMC '+bmiVal+'</span>' : '';
                                     const valResult = validateKcalTarget(m);
                                     const valMsg = valResult.msg ? '<div style="margin-bottom:0.4rem;font-size:0.68rem;color:'+(valResult.valid?'#D97706':'#DC2626')+';line-height:1.3;">'+valResult.msg+'</div>' : m.custom_kcal_target ? '<div style="margin-bottom:0.4rem;font-size:0.68rem;color:#059669;">✅ Objectif perso : '+m.custom_kcal_target+' kcal/j</div>' : '';
-                                    const mealBtns = allMeals.map(ml => {
-                                        const ck = homeMeals.includes(ml);
-                                        return '<button onclick="toggleHomeMeal(\''+target+'\',\''+ml+'\')" style="padding:0.25rem 0.5rem;border-radius:6px;border:1.5px solid '+(ck?'var(--teal)':'#E8ECEA')+';background:'+(ck?'#E6F2F0':'white')+';cursor:pointer;font-size:0.62rem;font-weight:'+(ck?'600':'400')+';color:'+(ck?'var(--teal)':'#999')+';font-family:inherit;">'+mealIcons[ml]+' '+ml+(ck?' ✓':'')+'</button>';
-                                    }).join('');
-                                    const summaryText = mc.target_100
-                                        ? '📊 Objectif journalier : <strong>'+effectiveTarget+' kcal</strong> répartis sur '+homeMeals.length+' repas maison ('+homePct+'% des créneaux)'
-                                        : '📊 Objectif journalier : <strong>'+dayTarget+' kcal</strong> ('+homePct+'% du TDEE — repas extérieurs non comptés)';
                                     html += '<div style="margin-top:0.6rem;padding-top:0.5rem;border-top:1px solid rgba(0,0,0,0.08);">';
                                     html += '<div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.4rem;"><span style="font-size:0.72rem;color:#555;">TDEE estimé : <strong style="color:var(--teal);">'+tdee+' kcal/j</strong></span> '+bmiHtml+'</div>';
                                     html += '<div style="display:flex;gap:0.4rem;align-items:center;margin-bottom:0.5rem;"><input type="number" class="input" placeholder="Objectif kcal (vide = auto)" value="'+(m.custom_kcal_target||'')+'" onchange="'+target+'.custom_kcal_target=this.value;render();" style="flex:1;font-size:0.8rem;">';
                                     if (m.custom_kcal_target) html += '<button onclick="resetKcalTarget(\''+target+'\')" style="background:none;border:none;cursor:pointer;font-size:0.75rem;color:#999;">↺ Auto</button>';
                                     html += '</div>';
                                     html += valMsg;
-                                    html += '<div style="font-size:0.72rem;font-weight:600;color:#555;margin-bottom:0.3rem;">🏠 Repas pris à la maison :</div>';
-                                    html += '<div style="display:flex;gap:0.25rem;flex-wrap:wrap;margin-bottom:0.4rem;">'+mealBtns+'</div>';
                                     html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:0.35rem 0.5rem;background:#F9FAFB;border-radius:6px;margin-bottom:0.3rem;"><span style="font-size:0.65rem;color:#555;">Atteindre 100% du TDEE sur les repas maison ?</span>';
                                     html += '<label style="position:relative;width:36px;height:18px;flex-shrink:0;"><input type="checkbox" '+(mc.target_100?'checked':'')+' onchange="'+target+'.meal_config.target_100=this.checked;render();" style="opacity:0;width:0;height:0;"><span style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:'+(mc.target_100?'var(--teal)':'#ccc')+';border-radius:18px;transition:.3s;"></span><span style="position:absolute;height:12px;width:12px;left:'+(mc.target_100?'20px':'3px')+';bottom:3px;background:white;border-radius:50%;transition:.3s;"></span></label></div>';
-                                    html += '<div style="font-size:0.6rem;color:#9CA3AF;line-height:1.4;">'+summaryText+'<br>BMR plancher : '+(calculateBMR(m)||'—')+' kcal</div>';
+                                    html += '<div style="font-size:0.6rem;color:#9CA3AF;line-height:1.4;">📊 Objectif journalier : <strong>'+dayTarget+' kcal</strong> • Les repas sont configurés dans ⚙️ Préférences<br>BMR plancher : '+(calculateBMR(m)||'—')+' kcal</div>';
                                     html += '</div>';
                                 }
                             }
@@ -3822,8 +3875,18 @@
         // ============================================
         // Cookie consent (RGPD)
         // ============================================
-        function getCookieConsent() { try { return localStorage.getItem('repasio_cookie_consent'); } catch(e) { return null; } }
-        function setCookieConsent(value) { try { localStorage.setItem('repasio_cookie_consent', value); } catch(e) {} hideCookieBanner(); }
+        function getCookieConsent() {
+            try { const v = localStorage.getItem('repasio_cookie_consent'); if (v) return v; } catch(e) {}
+            // Fallback: read from actual cookie
+            const m = document.cookie.match(/repasio_consent=(\w+)/);
+            return m ? m[1] : null;
+        }
+        function setCookieConsent(value) {
+            try { localStorage.setItem('repasio_cookie_consent', value); } catch(e) {}
+            // Also set actual cookie (1 year)
+            document.cookie = 'repasio_consent=' + value + ';path=/;max-age=31536000;SameSite=Lax';
+            hideCookieBanner();
+        }
         function hideCookieBanner() { const b = document.getElementById('cookie-banner'); if (b) b.style.display = 'none'; }
         function showCookieBanner() {
             if (getCookieConsent()) return;

@@ -955,7 +955,7 @@
             state.recipes = (data || []).map(r => ({
                 ...r, ingredients: (r.recipe_ingredients || []).map(ri => {
                     const ing = state.ingredients.find(i => i.id === ri.ingredient_id);
-                    return { ...ri, ingredient_name: ing?.name || '', kcal: ing?.kcal || 0, proteins: ing?.proteins || 0, carbs: ing?.carbs || 0, fats: ing?.fats || 0, price: ing?.price || 0 };
+                    return { ...ri, ingredient_name: ing?.name || '', kcal: ing?.kcal || 0, proteins: ing?.proteins || 0, carbs: ing?.carbs || 0, fats: ing?.fats || 0, price: ing?.price || 0, glycemic_index: ing?.glycemic_index || 0 };
                 })
             }));
         }
@@ -1206,7 +1206,7 @@
                     if (sr) {
                         const ings = (sr.site_recipe_ingredients || []).map(ri => {
                             const ing = state.ingredients.find(i => i.id == ri.ingredient_id);
-                            return { ...ri, ingredient_name: ing?.name || '', kcal: ing?.kcal || 0, proteins: ing?.proteins || 0, carbs: ing?.carbs || 0, fats: ing?.fats || 0, price: ing?.price || 0 };
+                            return { ...ri, ingredient_name: ing?.name || '', kcal: ing?.kcal || 0, proteins: ing?.proteins || 0, carbs: ing?.carbs || 0, fats: ing?.fats || 0, price: ing?.price || 0, glycemic_index: ing?.glycemic_index || 0 };
                         });
                         return { ...sr, ingredients: ings, _isSite: true };
                     }
@@ -1224,7 +1224,7 @@
             if (!sr) return null;
             const ings = (sr.site_recipe_ingredients || []).map(ri => {
                 const ing = state.ingredients.find(i => i.id == ri.ingredient_id);
-                return { ...ri, ingredient_name: ing?.name || '', kcal: ing?.kcal || 0, proteins: ing?.proteins || 0, carbs: ing?.carbs || 0, fats: ing?.fats || 0, price: ing?.price || 0 };
+                return { ...ri, ingredient_name: ing?.name || '', kcal: ing?.kcal || 0, proteins: ing?.proteins || 0, carbs: ing?.carbs || 0, fats: ing?.fats || 0, price: ing?.price || 0, glycemic_index: ing?.glycemic_index || 0 };
             });
             return { ...sr, ingredients: ings, _isSite: true };
         }
@@ -1677,6 +1677,18 @@
                 return t + totalKcal / (r.servings || 1);
             }, 0);
         }
+        function getSlotCGPerPerson(day, mealType) {
+            return getMealsForSlot(day, mealType).reduce((t, meal) => {
+                const r = findRecipeById(meal);
+                if (!r) return t;
+                const cg = (r.ingredients||[]).reduce((s,i) => {
+                    const carbsG = (i.carbs||0) * toGrams(i.quantity,i.unit) / 100;
+                    const gi = i.glycemic_index || 50;
+                    return s + carbsG * gi / 100;
+                }, 0);
+                return t + cg / (r.servings || 1);
+            }, 0);
+        }
         function getWeeklyTotalCost() {
             let t = 0;
             ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'].forEach(d => ['Petit-déjeuner','Collation','Déjeuner','Goûter','Dîner'].forEach(mt => t += getSlotCost(d, mt)));
@@ -1834,6 +1846,7 @@
                     const bmi = calculateBMI(mem);
                     const hasGC = mem.glycemic_control && mem.glycemic_control !== '';
                     const gcLabel = mem.glycemic_control === 'strict' ? 'Strict (CG≤20)' : mem.glycemic_control === 'moderate' ? 'Modéré (CG≤30)' : '';
+                    const gcMax = mem.glycemic_control === 'strict' ? 20 : mem.glycemic_control === 'moderate' ? 30 : 999;
                     
                     html += `<div style="margin-bottom:15px;padding:10px;border:1px solid #E8ECEA;border-radius:8px;">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
@@ -1858,8 +1871,10 @@
                         html += `<tr><td style="background:#F8FAF9;font-weight:bold;padding:3px;border:1px solid #ddd;">${meal.l}</td>`;
                         days.forEach(d => {
                             const kcalPP = Math.round(getSlotKcalPerPerson(d, meal.type) * portion);
+                            const cgPP = Math.round(getSlotCGPerPerson(d, meal.type) * 10) / 10;
                             dayTotals[d] += kcalPP;
-                            html += `<td style="text-align:center;padding:3px;border:1px solid #ddd;">${kcalPP > 0 ? kcalPP : '—'}</td>`;
+                            const cgStr = hasGC && cgPP > 0 ? '<br><span style="font-size:7px;color:'+(cgPP > gcMax ? '#DC2626' : '#059669')+';">CG '+cgPP+'</span>' : '';
+                            html += `<td style="text-align:center;padding:3px;border:1px solid #ddd;">${kcalPP > 0 ? kcalPP + cgStr : '—'}</td>`;
                         });
                         html += `<td style="text-align:center;padding:3px;border:1px solid #ddd;color:#888;">—</td></tr>`;
                     });
@@ -2672,6 +2687,7 @@
                                 const participants = getParticipantsForSlot(day, meal.type);
                                 const nbP = participants.length || 0;
                                 const kcalPP = Math.round(getSlotKcalPerPerson(day, meal.type));
+                                const cgPP = Math.round(getSlotCGPerPerson(day, meal.type) * 10) / 10;
                                 const costPerPortion = nbP > 0 ? sc / getSlotTotalPortions(day, meal.type) : 0;
                                 
                                 // Build per-member badges with their kcal + cost
@@ -2682,9 +2698,13 @@
                                     const portion = estimatePortions(member);
                                     const memberKcal = Math.round(kcalPP * portion);
                                     const memberCost = costPerPortion * portion;
-                                    return `<span class="p-badge-detail" title="${member.name}: ${memberKcal} kcal • ${memberCost.toFixed(2)}€ (${portion} portion)">
+                                    const hasGC = member.glycemic_control && member.glycemic_control !== '';
+                                    const gcMax = member.glycemic_control === 'strict' ? 20 : member.glycemic_control === 'moderate' ? 30 : 0;
+                                    const cgColor = hasGC && cgPP > gcMax ? '#DC2626' : hasGC && cgPP > 0 ? '#059669' : '#888';
+                                    return `<span class="p-badge-detail" title="${member.name}: ${memberKcal} kcal • CG ${cgPP} • ${memberCost.toFixed(2)}€ (${portion} portion)">
                                         <span class="p-initial">${initial}</span>
                                         ${memberKcal > 0 ? `<span class="p-kcal">${memberKcal} kcal</span>` : ''}
+                                        ${hasGC && cgPP > 0 ? `<span style="font-size:0.5rem;color:${cgColor};font-weight:600;">CG ${cgPP}</span>` : ''}
                                         ${memberCost > 0 ? `<span class="p-cost">${memberCost.toFixed(2)}€</span>` : ''}
                                     </span>`;
                                 }).join('');
@@ -2725,7 +2745,11 @@
                                     if (!member) return '';
                                     const portion = estimatePortions(member);
                                     const kcalPP = Math.round(getSlotKcalPerPerson(day, meal.type) * portion);
-                                    return `<span class="pmr-member">${member.name?.split(' ')[0]} ${kcalPP}kcal</span>`;
+                                    const cgPP = Math.round(getSlotCGPerPerson(day, meal.type) * 10) / 10;
+                                    const hasGC = member.glycemic_control && member.glycemic_control !== '';
+                                    const gcMax = member.glycemic_control === 'strict' ? 20 : member.glycemic_control === 'moderate' ? 30 : 0;
+                                    const cgBadge = hasGC && cgPP > 0 ? ` <span style="color:${cgPP > gcMax ? '#DC2626' : '#059669'};">CG ${cgPP}</span>` : '';
+                                    return `<span class="pmr-member">${member.name?.split(' ')[0]} ${kcalPP}kcal${cgBadge}</span>`;
                                 }).join('');
                                 
                                 return `<div class="planning-meal-row">
@@ -2831,7 +2855,7 @@
                 if (allRecipes.some(r => r.id === sr.id && r._source === 'user')) return;
                 const ings = (sr.site_recipe_ingredients || []).map(ri => {
                     const ing = state.ingredients.find(i => i.id == ri.ingredient_id);
-                    return { ...ri, ingredient_name: ing?.name || '', kcal: ing?.kcal || 0, proteins: ing?.proteins || 0, carbs: ing?.carbs || 0, fats: ing?.fats || 0, price: ing?.price || 0 };
+                    return { ...ri, ingredient_name: ing?.name || '', kcal: ing?.kcal || 0, proteins: ing?.proteins || 0, carbs: ing?.carbs || 0, fats: ing?.fats || 0, price: ing?.price || 0, glycemic_index: ing?.glycemic_index || 0 };
                 });
                 const tk = ings.reduce((s,i) => s + ((i.kcal||0)*toGrams(i.quantity,i.unit)/100), 0);
                 allRecipes.push({ ...sr, ingredients: ings, _source: 'site', _kcalPer: Math.round(tk/(sr.servings||4)), _cost: ings.reduce((s,i)=>s+((i.price||0)*toGrams(i.quantity,i.unit)/1000),0)/(sr.servings||4) });

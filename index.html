@@ -1083,7 +1083,6 @@
         // ============================================
         async function saveIngredient() {
             if (!await checkSession()) return;
-            if (state.weeklyMeals.length > 0 && state.editingIngredient) { showToast('\u26A0\uFE0F Videz le planning avant de modifier un ingr\u00e9dient', 4000); return; }
             const i = state.editingIngredient || state.newIngredient;
             if (!i.name.trim()) { showToast('Entrez un nom'); return; }
             const priceKg = parseFloat(i.priceKg) || 0;
@@ -1102,7 +1101,7 @@
             state.newIngredient = { name: '', kcal: '', proteins: '', carbs: '', fats: '', priceKg: '', unit: 'g' };
             await loadIngredients(); showToast('Enregistré'); render();
         }
-        async function deleteIngredient(id) { if (state.weeklyMeals.length > 0) { showToast('\u26A0\uFE0F Videz le planning avant de supprimer un ingr\u00e9dient', 4000); return; } if (!confirm('Supprimer ?')) return; await db.from('ingredients').delete().eq('id', id); await loadIngredients(); render(); }
+        async function deleteIngredient(id) { if (!confirm('Supprimer ?')) return; await db.from('ingredients').delete().eq('id', id); await loadIngredients(); render(); }
         function editIngredient(ing) { state.editingIngredient = { ...ing, priceKg: (ing.price || 0).toFixed(2) }; render(); }
         function cancelEditIngredient() { state.editingIngredient = null; render(); }
 
@@ -1159,7 +1158,6 @@
         // ============================================
         async function saveRecipe() {
             if (!await checkSession()) return;
-            if (state.weeklyMeals.length > 0) { showToast('\u26A0\uFE0F Videz le planning avant de modifier une recette', 4000); return; }
             const r = state.editingRecipe || state.newRecipe;
             if (!r.name.trim()) { showToast('Entrez un nom'); return; }
             if (!r.ingredients || r.ingredients.filter(i => i.ingredient_id).length === 0) { showToast('Ajoutez au moins un ingrédient'); return; }
@@ -1184,7 +1182,7 @@
                 await loadRecipes(); showToast('Recette enregistrée'); render();
             } catch(e) { showToast('Erreur: ' + (e.message || e)); }
         }
-        async function deleteRecipe(id) { if (state.weeklyMeals.length > 0) { showToast('\u26A0\uFE0F Videz le planning avant de supprimer une recette', 4000); return; } if (!confirm('Supprimer ?')) return; await db.from('recipe_ingredients').delete().eq('recipe_id', id); await db.from('recipes').delete().eq('id', id); await loadRecipes(); render(); }
+        async function deleteRecipe(id) { if (!confirm('Supprimer ?')) return; await db.from('recipe_ingredients').delete().eq('recipe_id', id); await db.from('recipes').delete().eq('id', id); await loadRecipes(); render(); }
         function editRecipe(r) { state.editingRecipe = JSON.parse(JSON.stringify(r)); render(); }
         function cancelEditRecipe() { state.editingRecipe = null; render(); }
 
@@ -1231,7 +1229,10 @@
             return { ...sr, ingredients: ings, _isSite: true };
         }
         function getParticipantsForSlot(day, mealType) { return state.slotParticipants.filter(p => p.day === day && p.meal_type === mealType); }
-        function openMealModal(day, mealType) { state.currentMealEdit = { day, mealType }; state.showMealModal = true; render(); }
+        function openMealModal(day, mealType) {
+            if (state._planningValidated) { showToast('\u26A0\uFE0F Menu d\u00e9j\u00e0 valid\u00e9, vos stocks sont d\u00e9duits ! Videz le planning pour modifier.', 5000); return; }
+            state.currentMealEdit = { day, mealType }; state.showMealModal = true; render();
+        }
         function closeMealModal() { state.showMealModal = false; state.currentMealEdit = null; render(); }
 
         async function addRecipeToMeal(recipeValue) {
@@ -1258,6 +1259,7 @@
         }
 
         async function removeRecipeFromMeal(mealId) {
+            if (state._planningValidated) { showToast('\u26A0\uFE0F Menu d\u00e9j\u00e0 valid\u00e9, vos stocks sont d\u00e9duits ! Videz le planning pour modifier.', 5000); return; }
             const meal = state.weeklyMeals.find(m => m.id === mealId);
             if (!meal) return;
             await db.from('weekly_meals').delete().eq('id', mealId);
@@ -1572,6 +1574,7 @@
         // Step 2: actual generation via server-side RPC
         async function executeGeneration() {
             if (!await checkSession()) return;
+            if (state._planningValidated) { showToast('\u26A0\uFE0F Menu d\u00e9j\u00e0 valid\u00e9 ! Videz le planning avant de reg\u00e9n\u00e9rer.', 5000); return; }
             const cfg = state._genConfig;
 
             // Save gen preferences locally
@@ -1961,11 +1964,11 @@
             overlay.id = 'pdf-overlay';
             overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;flex-direction:column;animation:fadeIn .2s;';
             overlay.innerHTML = `
-                <div style="background:#2D6A63;color:white;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
-                    <span style="font-weight:600;font-family:Lexend,sans-serif;">📄 Repasio — Aperçu PDF</span>
-                    <div style="display:flex;gap:8px;">
-                        <button onclick="document.getElementById('pdf-frame').contentWindow.print()" style="background:white;color:#2D6A63;border:none;padding:8px 16px;border-radius:6px;font-weight:600;cursor:pointer;font-family:Lexend,sans-serif;font-size:13px;">🖨️ Imprimer / PDF</button>
-                        <button onclick="document.getElementById('pdf-overlay').remove()" style="background:rgba(255,255,255,0.2);color:white;border:none;padding:8px 16px;border-radius:6px;font-weight:600;cursor:pointer;font-family:Lexend,sans-serif;font-size:13px;">✕ Fermer</button>
+                <div style="background:#2D6A63;color:white;padding:10px 16px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;flex-wrap:wrap;gap:6px;">
+                    <span style="font-weight:600;font-family:Lexend,sans-serif;font-size:0.85rem;">📄 Repasio — Aperçu PDF</span>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                        <button onclick="document.getElementById('pdf-frame').contentWindow.print()" style="background:white;color:#2D6A63;border:none;padding:6px 12px;border-radius:6px;font-weight:600;cursor:pointer;font-family:Lexend,sans-serif;font-size:12px;">🖨️ Imprimer</button>
+                        <button onclick="document.getElementById('pdf-overlay').remove()" style="background:rgba(255,255,255,0.2);color:white;border:none;padding:6px 12px;border-radius:6px;font-weight:600;cursor:pointer;font-family:Lexend,sans-serif;font-size:12px;">✕ Fermer</button>
                     </div>
                 </div>
                 <iframe id="pdf-frame" style="flex:1;border:none;background:white;"></iframe>
@@ -1974,7 +1977,7 @@
             const frame = document.getElementById('pdf-frame');
             const frameDoc = frame.contentDocument || frame.contentWindow.document;
             frameDoc.open();
-            frameDoc.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Repasio - Semaine du ' + dateStr + '</title><link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&display=swap" rel="stylesheet"><style>body{font-family:Lexend,sans-serif;margin:0;padding:15px;}@media print{@page{margin:8mm;}}</style></head><body>' + html + '</body></html>');
+            frameDoc.write('<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Repasio - Semaine du ' + dateStr + '</title><link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&display=swap" rel="stylesheet"><style>*{box-sizing:border-box;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important;}body{font-family:Lexend,sans-serif;margin:0;padding:15px;font-size:10px;width:100%;}table{border-collapse:collapse;width:100% !important;page-break-inside:auto;}tr{page-break-inside:avoid;}td,th{padding:3px;border:1px solid #ddd;}img{max-width:100%;}h2,h3{page-break-after:avoid;}@media print{@page{margin:8mm;size:A4 landscape;}body{padding:0;width:100%;}table{font-size:9px;}}</style></head><body>' + html + '</body></html>');
             frameDoc.close();
             // Close on Escape
             const escHandler = (e) => { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', escHandler); } };
@@ -2030,7 +2033,7 @@
                 const frame = document.getElementById('pdf-frame');
                 const fd = frame.contentDocument || frame.contentWindow.document;
                 fd.open();
-                fd.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Repasio - '+label+'</title><link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&display=swap" rel="stylesheet"><style>body{font-family:Lexend,sans-serif;margin:0;padding:15px;}@media print{@page{margin:8mm;}}</style></head><body>'+data.html_content+'</body></html>');
+                fd.write('<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Repasio - '+label+'</title><link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&display=swap" rel="stylesheet"><style>*{box-sizing:border-box;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important;}body{font-family:Lexend,sans-serif;margin:0;padding:15px;font-size:10px;width:100%;}table{border-collapse:collapse;width:100% !important;page-break-inside:auto;}tr{page-break-inside:avoid;}td,th{padding:3px;border:1px solid #ddd;}img{max-width:100%;}h2,h3{page-break-after:avoid;}@media print{@page{margin:8mm;size:A4 landscape;}body{padding:0;width:100%;}table{font-size:9px;}}</style></head><body>'+data.html_content+'</body></html>');
                 fd.close();
                 const escH = (e) => { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', escH); } };
                 document.addEventListener('keydown', escH);
@@ -2688,9 +2691,9 @@
                     </div>
                 </div>
                 <div class="card-body">
-                    ${state._planningValidated ? `<div style="background:linear-gradient(135deg,#D4EDDA,#E6F2F0);padding:0.5rem 0.8rem;border-radius:var(--radius-sm);margin-bottom:0.5rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.3rem;">
-                        <span style="font-size:0.78rem;font-weight:600;color:#155724;">✅ Planning validé — stock déduit</span>
-                        <span style="font-size:0.68rem;color:#666;">Videz pour créer un nouveau planning</span>
+                    ${state._planningValidated ? `<div style="background:#FEF2F2;border:2px solid #FECACA;padding:0.6rem 0.8rem;border-radius:var(--radius-sm);margin-bottom:0.5rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.3rem;">
+                        <span style="font-size:0.78rem;font-weight:600;color:#991B1B;">\u26A0\uFE0F Menu valid\u00e9 \u2014 stocks d\u00e9duits ! Le planning est verrouill\u00e9.</span>
+                        <span style="font-size:0.68rem;color:#B91C1C;">Videz le planning pour apporter des modifications.</span>
                     </div>` : ''}
                     <div class="planning-scroll-wrapper" style="overflow-x: auto; -webkit-overflow-scrolling: touch;">
                     <div class="planning-grid">

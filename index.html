@@ -1083,6 +1083,7 @@
         // ============================================
         async function saveIngredient() {
             if (!await checkSession()) return;
+            if (state.weeklyMeals.length > 0 && state.editingIngredient) { showToast('\u26A0\uFE0F Videz le planning avant de modifier un ingr\u00e9dient', 4000); return; }
             const i = state.editingIngredient || state.newIngredient;
             if (!i.name.trim()) { showToast('Entrez un nom'); return; }
             const priceKg = parseFloat(i.priceKg) || 0;
@@ -1101,7 +1102,7 @@
             state.newIngredient = { name: '', kcal: '', proteins: '', carbs: '', fats: '', priceKg: '', unit: 'g' };
             await loadIngredients(); showToast('Enregistré'); render();
         }
-        async function deleteIngredient(id) { if (!confirm('Supprimer ?')) return; await db.from('ingredients').delete().eq('id', id); await loadIngredients(); render(); }
+        async function deleteIngredient(id) { if (state.weeklyMeals.length > 0) { showToast('\u26A0\uFE0F Videz le planning avant de supprimer un ingr\u00e9dient', 4000); return; } if (!confirm('Supprimer ?')) return; await db.from('ingredients').delete().eq('id', id); await loadIngredients(); render(); }
         function editIngredient(ing) { state.editingIngredient = { ...ing, priceKg: (ing.price || 0).toFixed(2) }; render(); }
         function cancelEditIngredient() { state.editingIngredient = null; render(); }
 
@@ -1158,6 +1159,7 @@
         // ============================================
         async function saveRecipe() {
             if (!await checkSession()) return;
+            if (state.weeklyMeals.length > 0) { showToast('\u26A0\uFE0F Videz le planning avant de modifier une recette', 4000); return; }
             const r = state.editingRecipe || state.newRecipe;
             if (!r.name.trim()) { showToast('Entrez un nom'); return; }
             if (!r.ingredients || r.ingredients.filter(i => i.ingredient_id).length === 0) { showToast('Ajoutez au moins un ingrédient'); return; }
@@ -1182,7 +1184,7 @@
                 await loadRecipes(); showToast('Recette enregistrée'); render();
             } catch(e) { showToast('Erreur: ' + (e.message || e)); }
         }
-        async function deleteRecipe(id) { if (!confirm('Supprimer ?')) return; await db.from('recipe_ingredients').delete().eq('recipe_id', id); await db.from('recipes').delete().eq('id', id); await loadRecipes(); render(); }
+        async function deleteRecipe(id) { if (state.weeklyMeals.length > 0) { showToast('\u26A0\uFE0F Videz le planning avant de supprimer une recette', 4000); return; } if (!confirm('Supprimer ?')) return; await db.from('recipe_ingredients').delete().eq('recipe_id', id); await db.from('recipes').delete().eq('id', id); await loadRecipes(); render(); }
         function editRecipe(r) { state.editingRecipe = JSON.parse(JSON.stringify(r)); render(); }
         function cancelEditRecipe() { state.editingRecipe = null; render(); }
 
@@ -1234,6 +1236,12 @@
 
         async function addRecipeToMeal(recipeValue) {
             if (!state.currentMealEdit || !recipeValue) return;
+            const { day, mealType } = state.currentMealEdit;
+            const participants = getParticipantsForSlot(day, mealType);
+            if (participants.length === 0) {
+                showToast('⚠️ Ajoutez au moins un membre avant d\u2019ajouter un plat', 3000);
+                return;
+            }
             try {
                 const [source, id] = recipeValue.split(':');
                 const insertData = { day: state.currentMealEdit.day, meal_type: state.currentMealEdit.mealType, user_id: state.user?.id };
@@ -1262,6 +1270,15 @@
         }
 
         async function toggleSlotParticipant(day, mealType, memberId, isChecked) {
+            if (!isChecked) {
+                const currentParts = getParticipantsForSlot(day, mealType);
+                const slotMeals = getMealsForSlot(day, mealType);
+                if (currentParts.length <= 1 && slotMeals.length > 0) {
+                    showToast('\u26A0\uFE0F Au moins 1 membre requis quand des plats sont assign\u00e9s', 3000);
+                    render();
+                    return;
+                }
+            }
             if (isChecked) {
                 const { error } = await db.from('slot_participants').insert([{ user_id: state.user?.id, day, meal_type: mealType, member_id: memberId }]);
                 if (error) console.error('Insert participant error:', error);
@@ -2791,13 +2808,15 @@
             const recipesWithStock = state.recipes.map(r => {
                 const ss = (r.ingredients||[]).reduce((s, ri) => s + (getStockForIngredient(ri.ingredient_id).length > 0 ? 1 : 0), 0);
                 const kcal1 = Math.round((r.ingredients||[]).reduce((s,i) => s + ((i.kcal||0)*toGrams(i.quantity,i.unit)/100), 0) / (r.servings||1));
-                return { ...r, stockScore: ss, kcal1, _val: 'user:' + r.id };
+                const cost1 = ((r.ingredients||[]).reduce((s,i) => s + (toGrams(i.quantity,i.unit)/1000 * (i.price||0)), 0) / (r.servings||1)).toFixed(2);
+                return { ...r, stockScore: ss, kcal1, cost1, _val: 'user:' + r.id };
             }).sort((a, b) => b.stockScore - a.stockScore);
 
             const siteRecipesFiltered = state.siteRecipes.filter(r => !r.isExcluded).map(r => {
-                const ings = (r.site_recipe_ingredients||r.ingredients||[]).map(ri => { const ing = state.ingredients.find(i => i.id == ri.ingredient_id); return { ...ri, kcal: ing?.kcal||0 }; });
+                const ings = (r.site_recipe_ingredients||r.ingredients||[]).map(ri => { const ing = state.ingredients.find(i => i.id == ri.ingredient_id); return { ...ri, kcal: ing?.kcal||0, price: ing?.price||0 }; });
                 const kcal1 = Math.round(ings.reduce((s,i) => s + ((i.kcal||0)*toGrams(i.quantity,i.unit)/100), 0) / (r.servings||1));
-                return { ...r, kcal1, _val: 'site:' + r.id };
+                const cost1 = (ings.reduce((s,i) => s + (toGrams(i.quantity,i.unit)/1000 * (i.price||0)), 0) / (r.servings||1)).toFixed(2);
+                return { ...r, kcal1, cost1, _val: 'site:' + r.id };
             });
             
             return `<div class="modal-overlay" onclick="if(event.target===this)closeMealModal();">
@@ -2811,8 +2830,8 @@
                             <label class="label">Ajouter un plat</label>
                             <select class="select" onchange="if(this.value){addRecipeToMeal(this.value);this.selectedIndex=0;}">
                                 <option value="">-- Choisir une recette --</option>
-                                ${recipesWithStock.length > 0 ? `<optgroup label="📖 Mes recettes">${recipesWithStock.map(r => `<option value="${r._val}">${r.name}${r.kcal1 > 0 ? ' ('+r.kcal1+' kcal)' : ''}${r.stockScore > 0 ? ' ★' : ''}</option>`).join('')}</optgroup>` : ''}
-                                ${siteRecipesFiltered.length > 0 ? `<optgroup label="🌐 Recettes du site">${siteRecipesFiltered.map(r => `<option value="${r._val}">${r.name}${r.kcal1 > 0 ? ' ('+r.kcal1+' kcal)' : ''}</option>`).join('')}</optgroup>` : ''}
+                                ${recipesWithStock.length > 0 ? `<optgroup label="📖 Mes recettes">${recipesWithStock.map(r => `<option value="${r._val}">${r.name} (${r.kcal1} kcal • ${r.cost1}€/portion)${r.stockScore > 0 ? ' ★' : ''}</option>`).join('')}</optgroup>` : ''}
+                                ${siteRecipesFiltered.length > 0 ? `<optgroup label="🌐 Recettes du site">${siteRecipesFiltered.map(r => `<option value="${r._val}">${r.name} (${r.kcal1} kcal • ${r.cost1}€/portion)</option>`).join('')}</optgroup>` : ''}
                             </select>
                             <p style="font-size: 0.62rem; color: #9CA3AF; margin-top: 0.25rem;">★ utilise des ingrédients en stock</p>
                         </div>

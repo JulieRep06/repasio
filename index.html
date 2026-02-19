@@ -2790,10 +2790,15 @@
             
             const recipesWithStock = state.recipes.map(r => {
                 const ss = (r.ingredients||[]).reduce((s, ri) => s + (getStockForIngredient(ri.ingredient_id).length > 0 ? 1 : 0), 0);
-                return { ...r, stockScore: ss, _val: 'user:' + r.id };
+                const kcal1 = Math.round((r.ingredients||[]).reduce((s,i) => s + ((i.kcal||0)*toGrams(i.quantity,i.unit)/100), 0) / (r.servings||1));
+                return { ...r, stockScore: ss, kcal1, _val: 'user:' + r.id };
             }).sort((a, b) => b.stockScore - a.stockScore);
 
-            const siteRecipesFiltered = state.siteRecipes.filter(r => !r.isExcluded).map(r => ({ ...r, _val: 'site:' + r.id }));
+            const siteRecipesFiltered = state.siteRecipes.filter(r => !r.isExcluded).map(r => {
+                const ings = (r.site_recipe_ingredients||r.ingredients||[]).map(ri => { const ing = state.ingredients.find(i => i.id == ri.ingredient_id); return { ...ri, kcal: ing?.kcal||0 }; });
+                const kcal1 = Math.round(ings.reduce((s,i) => s + ((i.kcal||0)*toGrams(i.quantity,i.unit)/100), 0) / (r.servings||1));
+                return { ...r, kcal1, _val: 'site:' + r.id };
+            });
             
             return `<div class="modal-overlay" onclick="if(event.target===this)closeMealModal();">
                 <div class="modal">
@@ -2806,8 +2811,8 @@
                             <label class="label">Ajouter un plat</label>
                             <select class="select" onchange="if(this.value){addRecipeToMeal(this.value);this.selectedIndex=0;}">
                                 <option value="">-- Choisir une recette --</option>
-                                ${recipesWithStock.length > 0 ? `<optgroup label="📖 Mes recettes">${recipesWithStock.map(r => `<option value="${r._val}">${r.name}${r.stockScore > 0 ? ' ★' : ''}</option>`).join('')}</optgroup>` : ''}
-                                ${siteRecipesFiltered.length > 0 ? `<optgroup label="🌐 Recettes du site">${siteRecipesFiltered.map(r => `<option value="${r._val}">${r.name}</option>`).join('')}</optgroup>` : ''}
+                                ${recipesWithStock.length > 0 ? `<optgroup label="📖 Mes recettes">${recipesWithStock.map(r => `<option value="${r._val}">${r.name}${r.kcal1 > 0 ? ' ('+r.kcal1+' kcal)' : ''}${r.stockScore > 0 ? ' ★' : ''}</option>`).join('')}</optgroup>` : ''}
+                                ${siteRecipesFiltered.length > 0 ? `<optgroup label="🌐 Recettes du site">${siteRecipesFiltered.map(r => `<option value="${r._val}">${r.name}${r.kcal1 > 0 ? ' ('+r.kcal1+' kcal)' : ''}</option>`).join('')}</optgroup>` : ''}
                             </select>
                             <p style="font-size: 0.62rem; color: #9CA3AF; margin-top: 0.25rem;">★ utilise des ingrédients en stock</p>
                         </div>
@@ -3038,17 +3043,10 @@
 
         // DOM-based filtering - no render needed
         function filterRecipeList() {
-            const term = (state.searchRecipe || '').toLowerCase();
-            document.querySelectorAll('.recipe-item').forEach(el => {
-                const name = el.dataset.name || '';
-                const cat = el.dataset.cat || '';
-                const tags = el.dataset.tags || '';
-                const match = !term || name.includes(term) || cat.includes(term) || tags.includes(term);
-                el.style.display = match ? '' : 'none';
-                // Also hide expanded detail if present
-                if (!match && el.nextElementSibling && !el.nextElementSibling.classList.contains('recipe-item')) {
-                    el.nextElementSibling.style.display = 'none';
-                }
+            render();
+            requestAnimationFrame(() => {
+                const el = document.getElementById('searchRecipeAll');
+                if (el) { el.focus(); el.selectionStart = el.selectionEnd = el.value.length; }
             });
         }
 

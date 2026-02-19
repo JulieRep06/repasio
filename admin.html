@@ -78,7 +78,7 @@ const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSI
 
 
 let db=null;
-const state={user:null,isAdmin:false,activeTab:'dashboard',siteRecipes:[],ingredients:[],submissions:[],adminUsers:[],messages:[],siteContent:{},legalPages:[],stats:{},search:'',editingRecipe:null,editingIngredient:null,showImportModal:false,importData:null};
+const state={user:null,isAdmin:false,activeTab:'dashboard',siteRecipes:[],ingredients:[],submissions:[],adminUsers:[],messages:[],users:[],siteContent:{},legalPages:[],stats:{},search:'',editingRecipe:null,editingIngredient:null,showImportModal:false,importData:null,userSearch:'',showAddUserModal:false,newUser:{email:'',password:'',name:''}};
 
 function showToast(msg,dur=3000){const t=document.createElement('div');t.className='toast';t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),dur)}
 
@@ -107,7 +107,7 @@ async function adminLogin(email,pwd){
 async function adminLogout(){await db.auth.signOut();state.user=null;state.isAdmin=false;render()}
 
 // ========== DATA ==========
-async function loadAll(){await Promise.all([loadSiteRecipes(),loadIngredients(),loadSubmissions(),loadStats(),loadAdminUsers(),loadMessages(),loadSiteContentAdmin(),loadLegalPages()])}
+async function loadAll(){await Promise.all([loadSiteRecipes(),loadIngredients(),loadSubmissions(),loadStats(),loadAdminUsers(),loadMessages(),loadSiteContentAdmin(),loadLegalPages(),loadUsers()])}
 async function loadSiteRecipes(){
     const{data}=await db.from('site_recipes').select('*, site_recipe_ingredients(id,ingredient_id,quantity,unit)').order('name');
     state.siteRecipes=data||[];
@@ -149,6 +149,12 @@ async function loadMessages(){
         state.stats.unreadMsgs=(data||[]).filter(m=>!m.read).length;
     }catch(e){state.messages=[];state.stats.unreadMsgs=0}
 }
+async function loadUsers(){
+    try{
+        const{data}=await db.rpc('admin_get_users');
+        state.users=data||[];
+    }catch(e){console.warn('loadUsers:',e.message);state.users=[]}
+}
 function newRecipeForm(){
     state.editingRecipe={name:'',category:'Plat principal',difficulty:'Facile',preptime:10,cooktime:20,servings:4,instructions:'',is_active:true,dietary_info:[],tags:[],ingredients:[]};
     render();
@@ -165,7 +171,7 @@ function editSiteRecipe(id){
 async function saveSiteRecipe(){
     const r=state.editingRecipe;
     if(!r.name.trim()){showToast('Nom requis');return}
-    const data={name:r.name.trim(),category:r.category,difficulty:r.difficulty,preptime:parseInt(r.preptime)||0,cooktime:parseInt(r.cooktime)||0,servings:parseInt(r.servings)||4,instructions:r.instructions||'',is_active:r.is_active!==false,dietary_info:r.dietary_info||[],tags:r.tags||[],image_url:r.image_url||null};
+    const data={name:r.name.trim(),category:r.category,difficulty:r.difficulty,preptime:parseInt(r.preptime)||0,cooktime:parseInt(r.cooktime)||0,servings:parseInt(r.servings)||4,instructions:r.instructions||'',is_active:r.is_active!==false,is_validated:r.is_validated===true,dietary_info:r.dietary_info||[],tags:r.tags||[],image_url:r.image_url||null};
     try{
         let rid;
         if(r.id){
@@ -189,6 +195,10 @@ async function deleteSiteRecipe(id){
 async function toggleRecipeActive(id,cur){
     await db.from('site_recipes').update({is_active:!cur}).eq('id',id);
     await loadSiteRecipes();await loadStats();render();
+}
+async function toggleRecipeValidated(id,cur){
+    await db.from('site_recipes').update({is_validated:!cur}).eq('id',id);
+    await loadSiteRecipes();render();
 }
 
 // ========== INGREDIENTS CRUD ==========
@@ -323,6 +333,7 @@ function renderSidebar(){
         {id:'ingredients',icon:'🥕',label:'Aliments',count:state.ingredients.length},
         {id:'submissions',icon:'💡',label:'Soumissions',count:state.stats.pendingSubs||0,warn:true},
         {id:'messages',icon:'💬',label:'Messages',count:state.stats.unreadMsgs||0,warn:true},
+        {id:'users',icon:'👥',label:'Utilisateurs',count:state.users.length},
         {id:'content',icon:'📝',label:'Contenu site'},
         {id:'admins',icon:'🔐',label:'Admins'}
     ];
@@ -335,6 +346,7 @@ function renderContent(){
         case'ingredients':return renderIngredients();
         case'submissions':return renderSubmissions();
         case'messages':return renderMessages();
+        case'users':return renderUsers();
         case'content':return renderContentEditor();
         case'admins':return renderAdmins();
         default:return renderDashboard();
@@ -382,7 +394,7 @@ function renderRecipes(){
     </div></div>
     <div class="card-body">
         <input class="input" placeholder="🔍 Rechercher..." value="${state.search||''}" oninput="state.search=this.value;render()" style="max-width:300px;margin-bottom:1rem">
-        <table class="data-table"><thead><tr><th>Nom</th><th>Catégorie</th><th>Temps</th><th>Portions</th><th>Ing.</th><th>Diète</th><th>Statut</th><th>Actions</th></tr></thead>
+        <table class="data-table"><thead><tr><th>Nom</th><th>Catégorie</th><th>Temps</th><th>Portions</th><th>Ing.</th><th>Diète</th><th>Validée</th><th>Statut</th><th>Actions</th></tr></thead>
         <tbody>${f.map(r=>{
             const ni=(r.site_recipe_ingredients||[]).length;
             const di=(r.dietary_info||[]).map(d=>`<span class="tag tag-teal">${d}</span>`).join(' ');
@@ -393,6 +405,7 @@ function renderRecipes(){
                 <td>${r.servings||4}</td>
                 <td>${ni>0?`<span class="tag tag-green">${ni}</span>`:`<span class="tag tag-red">0</span>`}</td>
                 <td>${di||'-'}</td>
+                <td><button class="btn btn-sm" style="background:${r.is_validated?'#D4EDDA':'#F8D7DA'};color:${r.is_validated?'#155724':'#721C24'}" onclick="toggleRecipeValidated(${r.id},${!!r.is_validated})">${r.is_validated?'✅ Oui':'❌ Non'}</button></td>
                 <td><span class="tag ${r.is_active?'tag-green':'tag-red'}">${r.is_active?'Actif':'Inactif'}</span></td>
                 <td style="white-space:nowrap">
                     <button class="btn btn-secondary btn-sm" onclick="editSiteRecipe(${r.id})">✏️</button>
@@ -474,6 +487,7 @@ function renderRecipeModal(){
                 <div><label class="label">Prépa (min)</label><input type="number" class="input" value="${r.preptime}" oninput="state.editingRecipe.preptime=this.value"></div>
                 <div><label class="label">Cuisson (min)</label><input type="number" class="input" value="${r.cooktime}" oninput="state.editingRecipe.cooktime=this.value"></div>
                 <div><label class="label">Portions</label><input type="number" class="input" value="${r.servings}" oninput="state.editingRecipe.servings=this.value"></div>
+                <div><label class="label">Validée</label><select class="select" onchange="state.editingRecipe.is_validated=this.value==='true'"><option value="false" ${!r.is_validated?'selected':''}>Non</option><option value="true" ${r.is_validated?'selected':''}>Oui</option></select></div>
             </div>
 
             <div style="margin-bottom:.8rem">
@@ -675,6 +689,96 @@ async function deleteMessage(id){
     if(!confirm('Supprimer ce message ?'))return;
     await db.from('contact_messages').delete().eq('id',id);
     await loadMessages();render();
+}
+
+// ========== USERS ==========
+function renderUsers(){
+    const q=(state.userSearch||'').toLowerCase();
+    const filtered=state.users.filter(u=>(u.email||'').toLowerCase().includes(q)||(u.name||'').toLowerCase().includes(q)||(u.subscription_status||'').toLowerCase().includes(q));
+    const statusColors={active:'tag-green',trialing:'tag-yellow',expired:'tag-red',cancelled:'tag-red'};
+    return `<div class="card"><div class="card-header"><h2>👥 Utilisateurs (${state.users.length})</h2>
+    <button class="btn btn-primary" onclick="state.showAddUserModal=true;state.newUser={email:'',password:'',name:''};render()">+ Ajouter</button>
+    </div>
+    <div class="card-body">
+        <input class="input" placeholder="🔍 Rechercher par email, nom ou statut..." value="${state.userSearch||''}" oninput="state.userSearch=this.value;render()" style="max-width:350px;margin-bottom:1rem">
+        <div style="font-size:.72rem;color:#999;margin-bottom:.8rem">
+            <strong>${state.users.length}</strong> utilisateurs total •
+            <strong style="color:var(--success)">${state.users.filter(u=>u.subscription_status==='active').length}</strong> actifs •
+            <strong style="color:var(--warning)">${state.users.filter(u=>u.subscription_status==='trialing').length}</strong> essai •
+            <strong style="color:var(--danger)">${state.users.filter(u=>!u.subscription_status||u.subscription_status==='expired'||u.subscription_status==='cancelled').length}</strong> inactifs
+        </div>
+        <table class="data-table"><thead><tr><th>Email</th><th>Nom</th><th>Abonnement</th><th>Plan</th><th>Inscrit le</th><th>Fin abo</th><th>Actions</th></tr></thead>
+        <tbody>${filtered.map(u=>{
+            const created=u.created_at?new Date(u.created_at).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'}):'—';
+            const subEnd=u.subscription_end?new Date(u.subscription_end).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'numeric'}):'—';
+            const status=u.subscription_status||'none';
+            const tagClass=statusColors[status]||'tag-red';
+            const statusLabel={active:'Actif',trialing:'Essai',expired:'Expiré',cancelled:'Annulé',none:'Aucun'}[status]||status;
+            return `<tr>
+                <td style="font-weight:600;font-size:.75rem">${esc(u.email)}</td>
+                <td>${esc(u.name||'—')}</td>
+                <td><span class="tag ${tagClass}">${statusLabel}</span></td>
+                <td style="font-size:.72rem">${esc(u.subscription_plan||'—')}</td>
+                <td style="font-size:.72rem">${created}</td>
+                <td style="font-size:.72rem">${subEnd}</td>
+                <td style="white-space:nowrap">
+                    <button class="btn btn-secondary btn-sm" onclick="resetUserPassword('${esc(u.email)}')">🔑 Reset</button>
+                    <button class="btn btn-danger btn-sm" onclick="disableUser('${u.id}','${esc(u.email)}')">🚫</button>
+                </td></tr>`}).join('')}
+        ${filtered.length===0?'<tr><td colspan="7" style="text-align:center;color:#999;padding:1rem">Aucun utilisateur trouvé</td></tr>':''}
+        </tbody></table>
+    </div></div>
+    ${state.showAddUserModal?renderAddUserModal():''}`;
+}
+
+function renderAddUserModal(){
+    return `<div class="modal-overlay" onclick="if(event.target===this){state.showAddUserModal=false;render()}">
+    <div class="modal" style="max-width:420px">
+        <div class="modal-header"><h3>➕ Ajouter un utilisateur</h3><button class="close-btn" onclick="state.showAddUserModal=false;render()">✕</button></div>
+        <div class="modal-body">
+            <div style="margin-bottom:.7rem"><label class="label">Email</label><input class="input" id="nu-email" type="email" placeholder="user@email.fr" value="${state.newUser.email}"></div>
+            <div style="margin-bottom:.7rem"><label class="label">Nom (optionnel)</label><input class="input" id="nu-name" placeholder="Prénom Nom" value="${state.newUser.name}"></div>
+            <div style="margin-bottom:.7rem"><label class="label">Mot de passe</label><input class="input" id="nu-pwd" type="password" placeholder="Min. 6 caractères" value="${state.newUser.password}"></div>
+            <p style="font-size:.68rem;color:#999">L'utilisateur recevra un email de confirmation si configuré dans Supabase.</p>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="state.showAddUserModal=false;render()">Annuler</button>
+            <button class="btn btn-primary" onclick="createUser()">Créer le compte</button>
+        </div>
+    </div></div>`;
+}
+
+async function createUser(){
+    const email=document.getElementById('nu-email')?.value?.trim();
+    const pwd=document.getElementById('nu-pwd')?.value;
+    const name=document.getElementById('nu-name')?.value?.trim();
+    if(!email||!pwd){showToast('Email et mot de passe requis');return}
+    if(pwd.length<6){showToast('Mot de passe: 6 caractères minimum');return}
+    try{
+        const{data,error}=await db.rpc('admin_create_user',{user_email:email,user_password:pwd,user_name:name||null});
+        if(error)throw error;
+        state.showAddUserModal=false;
+        await loadUsers();await loadStats();
+        showToast('Utilisateur créé: '+email);render();
+    }catch(e){showToast('Erreur: '+(e.message||e))}
+}
+
+async function resetUserPassword(email){
+    if(!confirm('Envoyer un email de reset à '+email+' ?'))return;
+    try{
+        const{error}=await db.auth.resetPasswordForEmail(email,{redirectTo:window.location.origin});
+        if(error)throw error;
+        showToast('Email de reset envoyé à '+email);
+    }catch(e){showToast('Erreur: '+(e.message||e))}
+}
+
+async function disableUser(uid,email){
+    if(!confirm('Désactiver le compte de '+email+' ? Son abonnement sera marqué comme annulé.'))return;
+    try{
+        const{error}=await db.from('profiles').update({subscription_status:'cancelled'}).eq('id',uid);
+        if(error)throw error;
+        await loadUsers();showToast('Compte désactivé: '+email);render();
+    }catch(e){showToast('Erreur: '+(e.message||e))}
 }
 
 function renderAdmins(){

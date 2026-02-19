@@ -206,12 +206,12 @@ function newIngredientForm(){state.editingIngredient={name:'',kcal:0,proteins:0,
 function editIngredientById(id){
     const ing=state.ingredients.find(i=>i.id===id);
     if(!ing)return;
-    state.editingIngredient={...ing,priceKg:((ing.price||0)*10).toFixed(2)};render();
+    state.editingIngredient={...ing,priceKg:parseFloat(ing.price||0).toFixed(2)};render();
 }
 async function saveIngredient(){
     const i=state.editingIngredient;if(!i.name.trim()){showToast('Nom requis');return}
     const pk=parseFloat(i.priceKg)||0;
-    const data={name:i.name.trim(),kcal:parseFloat(i.kcal)||0,proteins:parseFloat(i.proteins)||0,carbs:parseFloat(i.carbs)||0,fats:parseFloat(i.fats)||0,price:pk/10,user_id:null};
+    const data={name:i.name.trim(),kcal:parseFloat(i.kcal)||0,proteins:parseFloat(i.proteins)||0,carbs:parseFloat(i.carbs)||0,fats:parseFloat(i.fats)||0,price:parseFloat(pk)||0,user_id:null};
     try{
         if(i.id){const{error}=await db.from('ingredients').update(data).eq('id',i.id);if(error)throw error}
         else{
@@ -273,7 +273,7 @@ async function executeImport(){
                 const name=row.name||row.nom||'';if(!name)continue;
                 if(state.ingredients.find(x=>x.name.toLowerCase()===name.toLowerCase()))continue;
                 const pk=parseFloat(row.price_kg||row.prix_kg||row.price||row.prix||0);
-                await db.from('ingredients').insert([{name,kcal:parseFloat(row.kcal||row.calories||0),proteins:parseFloat(row.proteins||row.proteines||0),carbs:parseFloat(row.carbs||row.glucides||0),fats:parseFloat(row.fats||row.lipides||0),price:pk/10,user_id:null}]);
+                await db.from('ingredients').insert([{name,kcal:parseFloat(row.kcal||row.calories||0),proteins:parseFloat(row.proteins||row.proteines||0),carbs:parseFloat(row.carbs||row.glucides||0),fats:parseFloat(row.fats||row.lipides||0),price:parseFloat(pk)||0,user_id:null}]);
                 count++;
             }
             await loadIngredients();
@@ -430,7 +430,7 @@ function renderIngredients(){
         <tbody>${f.map(i=>`<tr>
             <td style="font-weight:600">${esc(i.name)}</td>
             <td>${i.kcal||0}</td><td>${i.proteins||0}g</td><td>${i.carbs||0}g</td><td>${i.fats||0}g</td>
-            <td style="color:var(--teal);font-weight:600">${((i.price||0)*10).toFixed(2)}€</td>
+            <td style="color:var(--teal);font-weight:600">${parseFloat(i.price||0).toFixed(2)}€</td>
             <td style="white-space:nowrap">
                 <button class="btn btn-secondary btn-sm" onclick="editIngredientById(${i.id})">✏️</button>
                 <button class="btn btn-danger btn-sm" onclick="deleteIngredientById(${i.id})">🗑️</button>

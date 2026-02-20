@@ -3275,7 +3275,6 @@
             if (member.portion_factor) return parseFloat(member.portion_factor);
             const kcal = calculateKcal(member);
             if (!kcal) {
-                // Children or members without kcal data: estimate by age
                 const age = parseInt(member.age) || 10;
                 if (age < 4) return 0.35;
                 if (age < 8) return 0.5;
@@ -3283,14 +3282,14 @@
                 if (age < 16) return 0.8;
                 return 1;
             }
-            // Calculate relative to family average TDEE
             const allKcals = state.familyMembers
                 .map(m => calculateKcal(m))
                 .filter(k => k > 0);
             if (allKcals.length === 0) return 1;
             const avgKcal = allKcals.reduce((s, k) => s + k, 0) / allKcals.length;
-            // Portion = member's TDEE / average TDEE, clamped between 0.5 and 2.0
-            return Math.round(Math.min(2.0, Math.max(0.5, kcal / avgKcal)) * 20) / 20; // round to 0.05
+            let ratio = kcal / avgKcal;
+            // No manual correction - let SQL handle targeting
+            return Math.round(Math.min(2.0, Math.max(0.4, ratio)) * 20) / 20;
         }
 
         // ============================================

@@ -1062,7 +1062,7 @@
             // Init default meal_config when enabling kcal_tracking
             if (m.kcal_tracking && !m.meal_config) { m.meal_config = { target_100: true }; }
             if (!m.kcal_tracking) { m.meal_config = null; }
-            const data = { name: m.name.trim(), age: parseInt(m.age), gender: m.gender, weight: parseFloat(m.weight), height: parseInt(m.height), activity: m.activity || 'Modérée', goal: m.goal || 'Maintien', kcal_tracking: m.kcal_tracking || false, custom_kcal_target: m.custom_kcal_target ? parseInt(m.custom_kcal_target) : null, meal_config: m.meal_config || null, glycemic_control: m.glycemic_control || null, user_id: state.user?.id };
+            const data = { name: m.name.trim(), age: parseInt(m.age), gender: m.gender, weight: parseFloat(m.weight), height: parseInt(m.height), activity: m.activity || 'Modérée', goal: m.goal || 'Maintien', kcal_tracking: m.kcal_tracking || false, custom_kcal_target: m.custom_kcal_target ? parseInt(m.custom_kcal_target) : null, meal_config: m.meal_config || null, glycemic_control: m.glycemic_control || null, portion_factor: m.portion_factor ? parseFloat(m.portion_factor) : null, user_id: state.user?.id };
             console.log('[saveFamilyMember]', data);
             try {
                 let error;
@@ -1070,7 +1070,7 @@
                 else { ({ error } = await db.from('family_members').insert([data])); }
                 if (error) throw error;
                 state.editingMember = null;
-                state.newMember = { name: '', age: '', gender: '', weight: '', height: '', activity: 'Modérée', goal: 'Maintien', kcal_tracking: false, custom_kcal_target: '', meal_config: null, glycemic_control: null };
+                state.newMember = { name: '', age: '', gender: '', weight: '', height: '', activity: 'Modérée', goal: 'Maintien', kcal_tracking: false, custom_kcal_target: '', meal_config: null, glycemic_control: null, portion_factor: null };
                 await loadFamilyMembers(); showToast('Enregistré'); render();
             } catch(e) { console.error('saveFamilyMember error:', e); showToast('Erreur: ' + (e.message || JSON.stringify(e))); }
         }
@@ -1756,9 +1756,15 @@
                 if (!recipe) return;
                 const parts = getParticipantsForSlot(meal.day, meal.meal_type);
                 const pNames = parts.map(p => state.familyMembers.find(x => x.id === p.member_id)?.name || '').filter(Boolean);
-                const count = parts.length || 1;
-                const mult = count / recipe.servings;
-                recipeDetails.push({ name: recipe.name, day: meal.day, mealType: meal.meal_type, participants: pNames, portions: count });
+                // Calculate total portions needed: sum of each participant's portion factor
+                const totalPortions = parts.length > 0 
+                    ? parts.reduce((s, p) => {
+                        const mem = state.familyMembers.find(x => x.id === p.member_id);
+                        return s + (mem ? estimatePortions(mem) : 1);
+                    }, 0)
+                    : 1;
+                const mult = totalPortions / recipe.servings;
+                recipeDetails.push({ name: recipe.name, day: meal.day, mealType: meal.meal_type, participants: pNames, portions: totalPortions });
                 (recipe.ingredients || []).forEach(ing => {
                     if (!ing.ingredient_name) return;
                     const k = ing.ingredient_name;
@@ -2122,7 +2128,7 @@
         function getRecipePlannedInfo(recipeId) {
             return state.weeklyMeals.filter(m => m.recipe_id == recipeId || m.site_recipe_id == recipeId).map(meal => {
                 const parts = getParticipantsForSlot(meal.day, meal.meal_type);
-                return { day: meal.day, mealType: meal.meal_type, participants: parts.map(p => state.familyMembers.find(x => x.id === p.member_id)?.name || '').filter(Boolean), nbPersons: parts.length || 1 };
+                return { day: meal.day, mealType: meal.meal_type, participants: parts.map(p => state.familyMembers.find(x => x.id === p.member_id)?.name || '').filter(Boolean), nbPersons: parts.length > 0 ? parts.reduce((s, p) => { const mem = state.familyMembers.find(x => x.id === p.member_id); return s + (mem ? estimatePortions(mem) : 1); }, 0) : 1 };
             });
         }
 
@@ -2681,6 +2687,8 @@
                         ${state._planningValidated ? `
                             <button class="btn btn-primary btn-sm" onclick="downloadAllInOnePDF()">📥 PDF</button>
                             <button class="btn btn-delete btn-sm" onclick="confirmClearPlanning()">🗑️ Vider</button>
+                        ` : state._planningValidated ? `
+                            <button class="btn btn-delete btn-sm" onclick="confirmClearPlanning()">🗑️ Vider le planning</button>
                         ` : `
                             <button class="btn btn-generate" onclick="generateAutoMenu()">✨ Générer</button>
                             ${state.weeklyMeals.length > 0 ? `
@@ -2927,12 +2935,12 @@
                             <label class="label">Ingrédients</label>
                             ${r.ingredients.map((ing, idx) => `
                                 <div style="display: flex; gap: 0.35rem; margin-bottom: 0.35rem; flex-wrap: wrap; align-items: center;">
-                                    <select class="select" style="flex: 2; min-width: 110px;" onchange="${target}.ingredients[${idx}].ingredient_id=parseInt(this.value);${target}.ingredients[${idx}].ingredient_name=this.options[this.selectedIndex].text;render();">
+                                    <select class="select" style="flex: 2; min-width: 110px;" onchange="const ig=state.ingredients.find(x=>x.id==parseInt(this.value));${target}.ingredients[${idx}].ingredient_id=parseInt(this.value);${target}.ingredients[${idx}].ingredient_name=this.options[this.selectedIndex].text;if(ig&&ig.default_unit)${target}.ingredients[${idx}].unit=ig.default_unit;render();">
                                         <option value="">Choisir...</option>
                                         ${state.ingredients.map(i => `<option value="${i.id}" ${ing.ingredient_id===i.id?'selected':''}>${i.name}</option>`).join('')}
                                     </select>
                                     <input type="number" class="input" style="width: 60px;" placeholder="Qté" value="${ing.quantity||''}" onchange="${target}.ingredients[${idx}].quantity=this.value">
-                                    <select class="select" style="width: 60px;" onchange="${target}.ingredients[${idx}].unit=this.value">${['g','ml','pièce','càs','càc'].map(u => `<option ${ing.unit===u?'selected':''}>${u}</option>`).join('')}</select>
+                                    <select class="select" style="width: 60px;${ing.ingredient_id ? 'opacity:0.6;pointer-events:none;' : ''}" onchange="${target}.ingredients[${idx}].unit=this.value">${['g','ml','pièce','càs','càc','gousse'].map(u => `<option ${ing.unit===u?'selected':''}>${u}</option>`).join('')}</select>
                                     <button class="btn btn-delete btn-sm" onclick="${target}.ingredients.splice(${idx},1);render();">✕</button>
                                 </div>
                             `).join('')}
@@ -3146,12 +3154,12 @@
                     <h3 style="font-weight: 600; margin: 0 0 0.9rem; font-size: 0.92rem;">${isEdit ? '✏️ Modifier' : '➕ Ajouter au stock'}</h3>
                     <div class="form-grid">
                         <div style="grid-column: span 2;"><label class="label">Aliment</label>
-                            <select class="select" onchange="${target}.ingredient_id=parseInt(this.value)||null">
+                            <select class="select" onchange="const ig=state.ingredients.find(x=>x.id==parseInt(this.value));${target}.ingredient_id=parseInt(this.value)||null;if(ig&&ig.default_unit){${target}.unit=ig.default_unit;}render();">
                                 <option value="">-- Choisir --</option>
                                 ${state.ingredients.map(i => `<option value="${i.id}" ${s.ingredient_id==i.id?'selected':''}>${i.name}</option>`).join('')}
                             </select></div>
                         <div><label class="label">Quantité</label><input type="number" class="input" value="${s.quantity}" oninput="${target}.quantity=this.value"></div>
-                        <div><label class="label">Unité</label><select class="select" onchange="${target}.unit=this.value">${['g','kg','ml','L','pièce'].map(u => `<option ${s.unit===u?'selected':''}>${u}</option>`).join('')}</select></div>
+                        <div><label class="label">Unité</label><select class="select" style="${s.ingredient_id ? 'opacity:0.6;pointer-events:none;' : ''}" onchange="${target}.unit=this.value">${['g','kg','ml','L','pièce','gousse','càc','càs'].map(u => `<option ${s.unit===u?'selected':''}>${u}</option>`).join('')}</select></div>
                         <div><label class="label">Péremption</label><input type="date" class="input" id="stock-expiry-date" value="${s.expiry_date||''}" oninput="${target}.expiry_date=this.value" onchange="${target}.expiry_date=this.value"><div style="display:flex;align-items:center;gap:0.4rem;margin-top:0.3rem;"><span style="font-size:0.62rem;color:#9CA3AF;">ou mois seul :</span><input type="month" class="input" style="flex:1;padding:0.35rem 0.5rem;font-size:0.75rem;" value="" onchange="if(this.value){const d=new Date(this.value+'-01');d.setMonth(d.getMonth()+1);d.setDate(0);const v=d.toISOString().split('T')[0];${target}.expiry_date=v;document.getElementById('stock-expiry-date').value=v;this.value='';}"></div></div>
                     </div>
                     <div style="display: flex; gap: 0.5rem; margin-top: 0.9rem;">
@@ -3256,6 +3264,7 @@
         }
 
         function estimatePortions(member) {
+            if (member.portion_factor) return parseFloat(member.portion_factor);
             const kcal = calculateKcal(member);
             if (!kcal) return 1;
             if (kcal < 1500) return 0.75;
@@ -3826,12 +3835,13 @@
                         <h3 style="font-weight: 600; margin: 0 0 0.9rem; font-size: 0.92rem;">${isEdit ? '✏️ Modifier' : '➕ Nouveau membre'}</h3>
                         <div class="form-grid">
                             <div><label class="label">Prénom</label><input class="input" value="${m.name}" oninput="${target}.name=this.value"></div>
-                            <div><label class="label">Âge</label><input type="number" class="input" value="${m.age}" oninput="${target}.age=this.value"></div>
-                            <div><label class="label">Genre</label><select class="select" onchange="${target}.gender=this.value"><option value="">—</option><option ${m.gender==='Homme'?'selected':''}>Homme</option><option ${m.gender==='Femme'?'selected':''}>Femme</option></select></div>
+                            <div><label class="label">Âge</label><input type="number" class="input" value="${m.age}" oninput="${target}.age=this.value" onblur="if(parseInt(${target}.age)<16){${target}.gender='Enfant';${target}.kcal_tracking=false;}render()"></div>
+                            <div><label class="label">Genre</label><select class="select" onchange="${target}.gender=this.value;render()"><option value="">—</option><option ${m.gender==='Homme'?'selected':''}>Homme</option><option ${m.gender==='Femme'?'selected':''}>Femme</option><option ${m.gender==='Enfant'?'selected':''}>Enfant</option></select></div>
                             <div><label class="label">Poids (kg)</label><input type="number" class="input" value="${m.weight}" oninput="${target}.weight=this.value"></div>
                             <div><label class="label">Taille (cm)</label><input type="number" class="input" value="${m.height}" oninput="${target}.height=this.value"></div>
                             <div><label class="label">Activité</label><select class="select" onchange="${target}.activity=this.value">${['Sédentaire','Légère','Modérée','Active','Très active'].map(a => `<option ${m.activity===a?'selected':''}>${a}</option>`).join('')}</select></div>
                             <div><label class="label">Objectif</label><select class="select" onchange="${target}.goal=this.value;render()"><option ${(m.goal||'Maintien')==='Maintien'?'selected':''}>Maintien</option><option value="Perte" ${m.goal==='Perte'?'selected':''}>📉 Perte de poids</option><option value="Prise" ${m.goal==='Prise'?'selected':''}>💪 Prise de masse</option></select></div>
+                            <div><label class="label">Portion ×</label><input type="number" step="0.05" min="0.3" max="2" class="input" placeholder="${(() => { const ep = estimatePortions(m); return 'Auto: ' + ep; })()}" value="${m.portion_factor||''}" oninput="${target}.portion_factor=this.value||null" title="Facteur de portion. Vide = auto."></div>
                         </div>
                         ${(()=>{
                             const bmi = calculateBMI(m);

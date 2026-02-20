@@ -2384,6 +2384,9 @@
         function setActiveTab(tab) { state.activeTab = tab; state.showUserMenu = false; render(); }
 
         function render() {
+            // Don't re-render if user is focused on an auth input (prevents losing typed text)
+            const ae = document.activeElement;
+            if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA') && ae.closest('.auth-card,.auth-overlay')) return;
             const app = document.getElementById('app');
             if (state.isLoading) { app.innerHTML = `<div class="loading"><div class="loading-spinner"></div></div>`; return; }
             if (!state.user) { app.innerHTML = renderLanding(); return; }

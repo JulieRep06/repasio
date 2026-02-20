@@ -1980,7 +1980,7 @@
             const frame = document.getElementById('pdf-frame');
             const frameDoc = frame.contentDocument || frame.contentWindow.document;
             frameDoc.open();
-            frameDoc.write('<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Repasio - Semaine du ' + dateStr + '</title><link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&display=swap" rel="stylesheet"><style>*{box-sizing:border-box;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important;}body{font-family:Lexend,sans-serif;margin:0;padding:15px;font-size:10px;width:100%;}table{border-collapse:collapse;width:100% !important;page-break-inside:auto;}tr{page-break-inside:avoid;}td,th{padding:3px;border:1px solid #ddd;}img{max-width:100%;}h2,h3{page-break-after:avoid;}@media print{@page{margin:8mm;size:A4 landscape;}body{padding:0;width:100%;}table{font-size:9px;}}</style></head><body>' + html + '</body></html>');
+            frameDoc.write('<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=1200"><title>Repasio - Semaine du ' + dateStr + '</title><link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&display=swap" rel="stylesheet"><style>*{box-sizing:border-box;-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important;}body{font-family:Lexend,sans-serif;margin:0;padding:15px;font-size:10px;width:1200px;min-width:1200px;}table{border-collapse:collapse;width:100% !important;page-break-inside:auto;}tr{page-break-inside:avoid;}td,th{padding:3px;border:1px solid #ddd;}img{max-width:100%;}h2,h3{page-break-after:avoid;}@media print{@page{margin:8mm;size:A4 landscape;}body{padding:0;width:100%;min-width:auto;}table{font-size:9px;}}</style></head><body>' + html + '</body></html>');
             frameDoc.close();
             // Close on Escape
             const escHandler = (e) => { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', escHandler); } };
@@ -2522,7 +2522,7 @@
                         <div class="hero-content">
                             <div class="badge-new">\u2728 L'outil de planification repas pour toute la famille</div>
                             <h1>Organisez vos repas, <span class="gradient-text">simplifiez votre quotidien.</span></h1>
-                            <p>Repasio aide les familles \u00e0 planifier leurs repas, ma\u00eetriser leur budget alimentaire et atteindre leurs objectifs bien-\u00eatre \u2014 que ce soit mieux s'organiser au quotidien, accompagner une d\u00e9marche de perte de poids ou de prise de masse dans le cadre d'un suivi adapt\u00e9.</p>
+                            <p>Repasio aide les familles \u00e0 planifier leurs repas, ma\u00eetriser leur budget alimentaire et atteindre leurs objectifs bien-\u00eatre.</p>
                             
                             <div class="hero-actions">
                                 <button class="btn-hero-primary" onclick="showAuth('register')">Commencer gratuitement</button>
@@ -3718,6 +3718,10 @@
                             const active = ob.days[d];
                             return `<button onclick="state._ob.days['${d}']=!state._ob.days['${d}'];render();" style="flex:1;min-width:70px;padding:0.6rem 0.3rem;border-radius:10px;border:2px solid ${active?'var(--teal)':'#E8ECEA'};background:${active?'#E6F2F0':'white'};cursor:pointer;font-size:0.78rem;font-weight:${active?'700':'400'};color:${active?'var(--teal)':'#666'};font-family:inherit;text-align:center;">${dayLabels[d]}</button>`;
                         }).join('')}
+                    </div>
+                    <div style="background:#FEF9E7;border:1px solid #F0E6B3;border-radius:10px;padding:0.7rem;margin-bottom:0.8rem;font-size:0.7rem;color:#7A6C00;line-height:1.5;">
+                        <strong>ℹ️ Information importante</strong><br>
+                        Repasio est un outil d'aide au choix de repas. Il ne remplace pas un professionnel de santé. En cas de pathologie, allergie ou besoin spécifique, consultez un professionnel qualifié.
                     </div>
                     <button class="btn btn-primary" style="width:100%;justify-content:center;padding:0.7rem;border-radius:12px;font-size:0.9rem;" onclick="obFinalize();">Terminer la configuration ✨</button>
                 `);

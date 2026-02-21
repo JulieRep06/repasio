@@ -474,7 +474,7 @@ function renderSubmissions(){
 function renderRecipeModal(){
     const r=state.editingRecipe;
     const diets=['Sans porc','Sans gluten','Végétarien','Végan','Sans lactose','Halal','Casher','Sans fruits de mer'];
-    const cats=['Entrée','Plat principal','Dessert','Accompagnement','Petit-déjeuner','Goûter'];
+    const cats=['Entrée','Plat complet','Plat principal (proteines)','Dessert','Accompagnement','Petit-déjeuner','Collation','Goûter'];
     const diffs=['Facile','Moyen','Difficile'];
     return `<div class="modal-overlay" onclick="if(event.target===this){state.editingRecipe=null;render()}">
     <div class="modal">
